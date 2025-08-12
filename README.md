@@ -17,16 +17,9 @@ An innovative Tetris game controlled by your head movements via webcam, complete
 
 ## 🎬 Game Demo
 
-[![Game Demo Video](Logo.png)](Demo.mp4 "Click to play the demo video")
 
-*Click the image above to play or download the `Demo.mp4`*
 
-**Demo Highlights:**
-- ✅ **Tilt Head Left/Right** → Move the block left/right
-- ✅ **Open Mouth** → Rotate the block
-- ✅ **Nod Head Up** → Speed up the block's descent
-- ✅ **Game Interface** → Modern UI design and smooth animations
-- ✅ **Sound System** → Complete game sound effects and background music
+
 
 ---
 
