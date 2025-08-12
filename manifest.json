@@ -1,0 +1,39 @@
+{
+  "name": "Neural Tetris AI - 头部控制俄罗斯方块",
+  "short_name": "Neural Tetris",
+  "description": "创新的俄罗斯方块游戏，使用头部动作控制，带有AI面部识别技术",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1e3c72",
+  "theme_color": "#4ecdc4",
+  "orientation": "portrait-primary",
+  "categories": ["games", "entertainment"],
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
