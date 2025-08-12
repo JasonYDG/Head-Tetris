@@ -1,101 +1,112 @@
-# 🎮 Neural Tetris AI - 头部控制俄罗斯方块游戏
+![Logo](Logo.png)
 
-一个创新的俄罗斯方块游戏，通过摄像头识别头部动作来控制游戏，带有精美的视觉效果和音效。
+# HeadTris: A Head-Controlled Tetris Game
 
-## 🚀 快速体验
+An innovative Tetris game controlled by your head movements via webcam, complete with modern visual effects and sounds.
 
-| 在线游戏 (PWA) | Android APK |
+---
+
+## 🚀 Quick Start
+
+| Play Online (PWA) | Android APK |
 | :--- | :--- |
-| [**🎮 点击立即体验**](https://jasonydg.github.io/Brain_Tetris/) | [**📥 前往 Releases 下载**](https://github.com/JasonYDG/Brain_Tetris/releases) |
-| *支持所有现代浏览器，无需下载* | *下载最新版本APK，支持离线游戏* |
+| [**🎮 Click to Play**](https://jasonydg.github.io/HeadTris/) | [**📥 Go to Releases to Download**](https://github.com/JasonYDG/HeadTris/releases) |
+| *Supports all modern browsers, no download required* | *Download the latest APK for offline play* |
 
 ---
 
-## 🎬 游戏演示
+## 🎬 Game Demo
 
-[![游戏演示视频](https://github.com/JasonYDG/Brain_Tetris/raw/main/www/icon-192.png)](https://github.com/JasonYDG/Brain_Tetris/raw/main/www/Demo.mp4 "点击播放演示视频")
+[![Game Demo Video](icon-192.png)](Demo.mp4 "Click to play the demo video")
 
-*点击上方图片即可播放或下载 `Demo.mp4` 演示视频*
+*Click the image above to play or download the `Demo.mp4`*
 
-**视频演示内容:**
-- ✅ **头部左右倾斜** → 控制方块左右移动
-- ✅ **张嘴动作** → 触发方块旋转
-- ✅ **抬头动作** → 加速方块下降
-- ✅ **游戏界面** → 现代化的UI设计和流畅的动画效果
-- ✅ **音效系统** → 完整的游戏音效和BGM反馈
+**Demo Highlights:**
+- ✅ **Tilt Head Left/Right** → Move the block left/right
+- ✅ **Open Mouth** → Rotate the block
+- ✅ **Nod Head Up** → Speed up the block's descent
+- ✅ **Game Interface** → Modern UI design and smooth animations
+- ✅ **Sound System** → Complete game sound effects and background music
 
 ---
 
-## ✨ 功能特点
+## ✨ Features
 
-- 👨‍💻 **头部动作控制**: 通过摄像头实时识别头部姿态，实现真正的“意念”操控。
-- 🎨 **精美画面**: 现代化的UI设计和流畅的动画效果。
-- 🔊 **音效系统**: 完整的游戏音效和经典背景音乐，使用Web Audio API实时生成。
-- 🏆 **智能积分系统**: 多行消除奖励更高分数，等级越高，得分越多。
-- 🧱 **方块分布优化**: 智能生成长条方块，确保游戏体验和平衡。
-- 📱 **响应式设计**: 完美适配桌面和移动设备。
-- ⌨️ **多种控制方式**: 支持头部控制、键盘控制和触摸控制，满足不同场景需求。
+- 👨‍💻 **Head Movement Control**: Real-time head pose recognition for a true hands-free experience.
+- 🎨 **Modern Graphics**: Sleek UI design and fluid animations.
+- 🔊 **Sound System**: Classic BGM and sound effects generated in real-time with the Web Audio API.
+- 🏆 **Smart Scoring System**: Earn more points for clearing multiple lines and at higher levels.
+- 🧱 **Optimized Block Distribution**: Intelligently generates long blocks to ensure a balanced and enjoyable game.
+- 📱 **Responsive Design**: Perfect for both desktop and mobile devices.
+- ⌨️ **Multiple Control Schemes**: Supports head, keyboard, and touch controls for any situation.
 
-## 🕹️ 控制方式
+---
 
-### 头部控制 (主要)
-| 动作 | 效果 | 说明 |
+## 🕹️ How to Play
+
+### Head Control (Primary)
+| Action | Effect | Notes |
 | :--- | :--- | :--- |
-| **向左/右倾斜头部** | 方块左/右移 | 轻微倾斜即可，支持连续移动 |
-| **张嘴** | 方块旋转 | 快速张合嘴巴，精准识别 |
-| **抬头** | 加速下降 | 明显抬头动作触发加速 |
+| **Tilt Head Left/Right** | Move block left/right | A slight tilt is enough; supports continuous movement. |
+| **Open Mouth** | Rotate block | A quick, clear motion is recognized accurately. |
+| **Nod Head Up** | Accelerate descent | A distinct upward nod triggers the speed boost. |
 
-### 键盘控制 (备用)
-- **←** / **→** : 左/右移
-- **↓** : 加速下降
-- **↑** / **空格** : 旋转
-- **P** : 暂停/继续
+### Keyboard Control (Alternative)
+- **←** / **→** : Move Left / Right
+- **↓** : Accelerate Descent
+- **↑** / **Space** : Rotate
+- **P** : Pause / Resume
 
-### 触摸控制 (移动设备)
-- **左右滑动**: 左右移动
-- **向下滑动**: 加速下降
-- **点击屏幕**: 旋转
+### Touch Control (Mobile)
+- **Swipe Left/Right**: Move Left / Right
+- **Swipe Down**: Accelerate Descent
+- **Tap Screen**: Rotate
 
-## 🛠️ 技术实现
+---
 
-- **核心框架**: 原生 HTML5 + CSS3 + JavaScript (无依赖)
-- **面部识别**: Google MediaPipe Face Mesh
-- **游戏引擎**: Canvas 2D API
-- **音效系统**: Web Audio API
-- **摄像头**: WebRTC `getUserMedia` API
+## 🛠️ Tech Stack
 
-## 📂 文件结构
+- **Core**: Vanilla HTML5 + CSS3 + JavaScript (no dependencies)
+- **Face Recognition**: Google MediaPipe Face Mesh
+- **Game Engine**: Canvas 2D API
+- **Sound System**: Web Audio API
+- **Camera Access**: WebRTC `getUserMedia` API
+
+---
+
+## 📂 File Structure
 
 ```
 .
-├── www/                    # Web应用资源目录
-│   ├── index.html          # 主页面
-│   ├── style.css           # 样式文件
-│   ├── tetris.js           # 核心游戏逻辑
-│   ├── head-control-simple.js # 头部动作识别与控制
-│   ├── game-fixed.js       # 游戏主控制器
-│   ├── sw.js               # Service Worker
-│   ├── manifest.json       # PWA 配置文件
-│   ├── Demo.mp4            # 游戏演示视频
-│   └── sounds/             # 音效资源目录
-├── config.xml              # Cordova 配置文件
-├── capacitor.config.json   # Capacitor 配置文件
-├── package.json            # 项目依赖与脚本
-├── README.md               # 说明文档
-└── .github/                # GitHub Actions 工作流
+├── index.html              # Main page
+├── style.css               # Stylesheet
+├── tetris.js               # Core game logic
+├── head-control-simple.js  # Head movement detection and control
+├── game-fixed.js           # Main game controller
+├── sw.js                   # Service Worker for PWA
+├── manifest.json           # PWA configuration file
+├── Demo.mp4                # Game demo video
+├── Logo.png                # Project Logo
+├── sounds/                 # Sound assets directory
+│   └── README.md
+└── README.md               # This file
 ```
 
-## 📝 开发说明
+---
 
-如果需要修改控制灵敏度，可以在 `www/head-control-simple.js` 中调整以下参数：
+## 📝 Development Notes
+
+To adjust control sensitivity, you can modify the following parameters in `head-control-simple.js`:
 
 ```javascript
-this.headTiltThreshold = 0.15;  // 头部倾斜阈值
-this.nodThreshold = 0.04;       // 仰头阈值
-this.mouthOpenThreshold = 0.02; // 张嘴检测阈值
-this.actionCooldown = 300;      // 动作冷却时间(毫秒)
+this.headTiltThreshold = 0.15;  // Head tilt sensitivity
+this.nodThreshold = 0.04;       // Head nod sensitivity
+this.mouthOpenThreshold = 0.02; // Mouth open sensitivity
+this.actionCooldown = 300;      // Cooldown between actions (in ms)
 ```
 
-## 📄 许可证
+---
 
-本项目采用 [MIT](https://opensource.org/licenses/MIT) 许可证。
+## 📄 License
+
+This project is licensed under the [MIT](https://opensource.org/licenses/MIT) License.
