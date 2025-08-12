@@ -1,35 +1,39 @@
-// 简化版头部动作控制系统 - 只使用默认摄像头
+// Simplified head movement control system - uses default camera only
 class HeadControl {
-    constructor(tetrisGame, onCalibrationComplete) {
+    constructor(tetrisGame, onCalibrationComplete, onFaceStatusChange) {
+        this.onFaceStatusChange = onFaceStatusChange;
+        this.isFaceDetected = false;
+        this.lastFaceDetectionStatus = false;
+        this.calibrationCompletedNotified = false;
         this.tetrisGame = tetrisGame;
         this.onCalibrationComplete = onCalibrationComplete;
         this.faceMesh = null;
         this.camera = null;
         this.isActive = false;
         
-        // 控制参数 (可调节)
-        this.headTiltThreshold = 0.15; // 左右倾斜阈值（基于眼线角度）
-        this.mouthOpenThreshold = 0.02; // 张嘴检测阈值
+        // Control parameters (adjustable)
+        this.headTiltThreshold = 0.15; // Left/right tilt threshold (based on eye line angle)
+        this.mouthOpenThreshold = 0.02; // Mouth open detection threshold
         
-        // 防抖动参数
+        // Debounce parameters
         this.lastAction = '';
         this.actionCooldown = 300;
         this.lastActionTime = 0;
         
-        // 左右移动状态跟踪
+        // Left/right movement state tracking
         this.currentTiltState = 'center';
         this.lastTiltState = 'center';
         
-        // 基准位置
+        // Baseline position
         this.baselineNose = null;
         this.baselineMouth = null;
         this.calibrationFrames = 0;
         this.maxCalibrationFrames = 30;
         
-        // 嘴巴状态跟踪
+        // Mouth state tracking
         this.mouthWasOpen = false;
         
-        // 连续移动检测
+        // Continuous movement detection
         this.continuousMoveStartTime = 0;
         this.continuousMoveThreshold = 1000;
         this.continuousMoveInterval = 150;
@@ -38,18 +42,18 @@ class HeadControl {
         this.isInFastMoveMode = false;
         this.fastMoveStartTime = 0;
         
-        // 快速移动检测（大幅度倾斜）
+        // Fast movement detection (large tilt)
         this.fastMoveThreshold = 0.22;
         this.fastMoveInterval = 90;
         
-        // 点头加速下降检测（修改为点头动作检测）
+        // Nod acceleration drop detection (modified to nod action detection)
         this.nodStartTime = 0;
-        this.nodThreshold = 0.03; // 点头检测阈值
+        this.nodThreshold = 0.03; // Nod detection threshold
         this.isNodding = false;
         this.lastNodTime = 0;
-        this.nodCooldown = 300; // 点头冷却时间，防止重复检测
+        this.nodCooldown = 300; // Nod cooldown time, prevent repeated detection
         
-        // 点头状态跟踪
+        // Nod state tracking
         this.nosePositionHistory = [];
         this.maxNoseHistory = 10;
         this.dynamicBaseline = null;
@@ -59,10 +63,10 @@ class HeadControl {
         this.nodDirection = 'none'; // 'down', 'up', 'none'
         this.nodPhase = 'waiting'; // 'waiting', 'going_down', 'going_up', 'completed'
         
-        // 状态显示控制
-        this.showDetailedStatus = true; // 可以设为false来显示迷你状态
+        // Status display control
+        this.showDetailedStatus = true; // Can be set to false to show mini status
         
-        // 校准完成提示控制
+        // Calibration complete prompt control
         this.calibrationCompleteTime = 0;
         this.showCalibrationComplete = false;
         
@@ -86,9 +90,9 @@ class HeadControl {
             
             this.faceMesh.onResults(this.onResults.bind(this));
             
-            console.log('MediaPipe Face Mesh 初始化成功');
+            console.log('MediaPipe Face Mesh initialized successfully');
         } catch (error) {
-            console.error('MediaPipe 初始化失败:', error);
+            console.error('MediaPipe initialization failed:', error);
         }
     }
     
@@ -97,10 +101,10 @@ class HeadControl {
             const video = document.getElementById('input_video');
             const canvas = document.getElementById('output_canvas');
             
-            // 重置校准状态
+            // Reset calibration state
             this.resetCalibration();
             
-            // 使用默认摄像头，简单配置
+            // Use default camera, simple configuration
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
                     width: 320,
@@ -113,14 +117,14 @@ class HeadControl {
             video.playsInline = true;
             video.muted = true;
             
-            // 等待视频加载
+            // Wait for video to load
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => {
                     video.play().then(resolve);
                 };
             });
             
-            // 创建MediaPipe Camera
+            // Create MediaPipe Camera
             this.camera = new Camera(video, {
                 onFrame: async () => {
                     try {
@@ -128,7 +132,7 @@ class HeadControl {
                             await this.faceMesh.send({image: video});
                         }
                     } catch (error) {
-                        console.error('帧处理错误:', error);
+                        console.error('Frame processing error:', error);
                     }
                 },
                 width: 320,
@@ -137,9 +141,9 @@ class HeadControl {
             
             await this.camera.start();
             this.isActive = true;
-            console.log('默认摄像头启动成功');
+            console.log('Default camera started successfully');
             
-            // 显示初始状态
+            // Display initial status
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -158,13 +162,13 @@ class HeadControl {
             ctx.fillText(line2, centerX, centerY + 15);
             
         } catch (error) {
-            console.error('摄像头启动失败:', error);
-            let errorMessage = '无法访问摄像头';
+            console.error('Camera startup failed:', error);
+            let errorMessage = 'Cannot access camera';
             
             if (error.name === 'NotAllowedError') {
-                errorMessage = '摄像头权限被拒绝，请检查浏览器设置';
+                errorMessage = 'Camera permission denied, please check browser settings';
             } else if (error.name === 'NotReadableError') {
-                errorMessage = '摄像头被其他应用占用';
+                errorMessage = 'Camera is in use by another application';
             }
             
             alert(errorMessage);
@@ -177,31 +181,32 @@ class HeadControl {
             const canvas = document.getElementById('output_canvas');
             const ctx = canvas.getContext('2d');
             
-            // 清空画布
+            // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // 绘制视频帧
+            // Draw video frame
             if (results.image) {
                 ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
             }
             
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                this.isFaceDetected = true; // Face detected
                 const landmarks = results.multiFaceLandmarks[0];
                 
-                // 绘制面部关键点
+                // Draw face landmarks
                 this.drawLandmarks(ctx, landmarks);
                 
-                // 校准基准位置
+                // Calibrate baseline position
                 if (this.calibrationFrames < this.maxCalibrationFrames) {
                     this.calibrateBaseline(landmarks);
                     this.calibrationFrames++;
                     
-                    // 显示校准进度
+                    // Display calibration progress
                     this.drawCalibrationProgress(ctx);
                     return;
                 }
                 
-                // 显示校准完成状态（5秒后消失）
+                // Display calibration complete status (disappears after 5 seconds)
                 const now = Date.now();
                 if (this.showCalibrationComplete && (now - this.calibrationCompleteTime < 5000)) {
                     this.drawCalibrationComplete(ctx);
@@ -209,18 +214,18 @@ class HeadControl {
                     this.showCalibrationComplete = false;
                 }
                 
-                // 检测头部动作
+                // Detect head movements
                 this.detectHeadMovements(landmarks);
                 
-                // 显示控制状态（可以通过showDetailedStatus控制详细程度）
+                // Display control status (detail level controlled by showDetailedStatus)
                 if (this.showDetailedStatus !== false) {
                     this.drawControlStatus(ctx, landmarks);
                 } else {
                     this.drawMiniStatus(ctx, landmarks);
                 }
             } else {
-                // 没有检测到面部时重置校准
-                this.resetCalibration();
+                // No face detected
+                // Draw "Please face the camera" message
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -231,8 +236,15 @@ class HeadControl {
 
                 ctx.fillText('Please face the camera', canvas.width / 2, canvas.height / 2);
             }
+            // Check if status changed and notify
+            if (this.isFaceDetected !== this.lastFaceDetectionStatus) {
+                this.lastFaceDetectionStatus = this.isFaceDetected;
+                if (this.onFaceStatusChange) {
+                    this.onFaceStatusChange(this.isFaceDetected);
+                }
+            }
         } catch (error) {
-            console.error('onResults 处理错误:', error);
+            console.error('onResults processing error:', error);
         }
     }
     
@@ -264,7 +276,7 @@ class HeadControl {
                 this.baselineNose.z /= this.maxCalibrationFrames;
                 this.baselineMouth.distance /= this.maxCalibrationFrames;
                 
-                // 记录校准完成时间
+                // Record calibration completion time
                 this.calibrationCompleteTime = Date.now();
                 this.showCalibrationComplete = true;
                 
@@ -272,10 +284,11 @@ class HeadControl {
 
                 if (this.onCalibrationComplete) {
                     this.onCalibrationComplete();
+                    this.calibrationCompletedNotified = true; // Prevent multiple calls
                 }
             }
         } catch (error) {
-            console.error('校准过程错误:', error);
+            console.error('Calibration process error:', error);
         }
     }
     
@@ -296,20 +309,25 @@ class HeadControl {
         this.lastAction = '';
         this.lastActionTime = 0;
         
-        // 重置校准完成提示
+        // Reset calibration complete prompt
         this.calibrationCompleteTime = 0;
         this.showCalibrationComplete = false;
         
-        // 重置点头检测系统
+        // Reset nod detection system
         this.nosePositionHistory = [];
         this.dynamicBaseline = null;
         this.frameCount = 0;
         this.lastNoseY = 0;
         this.nodDirection = 'none';
         this.nodPhase = 'waiting';
+
+        // Reset face detection status
+        this.isFaceDetected = false;
+        this.lastFaceDetectionStatus = false;
+        this.calibrationCompletedNotified = false; // New property
     }
     
-    // 简化的头部动作检测
+    // Simplified head movement detection
     detectHeadMovements(landmarks) {
         if (!this.baselineNose || !this.baselineMouth) {
             return;
@@ -327,18 +345,18 @@ class HeadControl {
                 return;
             }
             
-            // 计算头部倾斜
+            // Calculate head tilt
             const tiltX = this.calculateHeadTilt(landmarks);
             const noseY = nose.y;
             
-            // 计算嘴巴张开程度
+            // Calculate mouth open degree
             const mouthDistance = Math.abs(upperLip.y - lowerLip.y);
             const mouthOpen = mouthDistance - this.baselineMouth.distance;
             const isMouthOpen = mouthOpen > this.mouthOpenThreshold;
             
             let action = '';
             
-            // 更新当前倾斜状态
+            // Update current tilt state
             if (tiltX > this.headTiltThreshold) {
                 this.currentTiltState = 'right';
             } else if (tiltX < -this.headTiltThreshold) {
@@ -347,11 +365,11 @@ class HeadControl {
                 this.currentTiltState = 'center';
             }
             
-            // 检测张嘴旋转
+            // Detect mouth open for rotation
             if (isMouthOpen && !this.mouthWasOpen) {
                 action = 'rotate';
             }
-            // 检测左右倾斜（点头时不禁用，因为点头是瞬时动作）
+            // Detect left/right tilt (not disabled during nod, as nod is instantaneous)
             else if (this.currentTiltState !== 'center') {
                 const isFastTilt = Math.abs(tiltX) > this.fastMoveThreshold;
                 
@@ -393,7 +411,7 @@ class HeadControl {
                 }
             } else {
                 if (this.isInContinuousMode || this.isInFastMoveMode) {
-                    console.log('头部回到中心，结束移动模式');
+                    console.log('Head returned to center, ending move mode');
                 }
                 this.continuousMoveStartTime = 0;
                 this.isInContinuousMode = false;
@@ -401,7 +419,7 @@ class HeadControl {
                 this.fastMoveStartTime = 0;
             }
             
-            // 检测点头加速下降
+            // Detect nod for accelerated drop
             if (this.tetrisGame.gameRunning) {
                 this.checkNodAcceleration(noseY);
             }
@@ -409,7 +427,7 @@ class HeadControl {
             this.mouthWasOpen = isMouthOpen;
             this.lastTiltState = this.currentTiltState;
             
-            // 执行动作
+            // Execute action
             if (action) {
                 if (action === 'rotate' || action !== this.lastAction) {
                     this.executeAction(action);
@@ -422,11 +440,11 @@ class HeadControl {
                 }
             }
         } catch (error) {
-            console.error('动作检测错误:', error);
+            console.error('Action detection error:', error);
         }
     }
     
-    // 点头检测（检测完整的点头动作：向下然后向上，或向上然后向下）
+    // Nod detection (detects full nod action: down then up, or up then down)
     checkNodAcceleration(noseY) {
         const now = Date.now();
 
@@ -434,79 +452,79 @@ class HeadControl {
 
         if (!this.dynamicBaseline) return false;
 
-        // 计算相对于基准线的位置
+        // Calculate position relative to baseline
         const relativePosition = noseY - this.dynamicBaseline;
         const nodDownThreshold = this.nodThreshold;
-        const nodUpThreshold = -this.nodThreshold; // 向上移动是负值
+        const nodUpThreshold = -this.nodThreshold; // Upward movement is negative
 
         const currentDirection = relativePosition > nodDownThreshold ? 'down' :
             relativePosition < nodUpThreshold ? 'up' : 'center';
 
-        // 点头/抬头状态机
+        // Nod/Head-up state machine
         switch (this.nodPhase) {
             case 'waiting':
                 if (currentDirection === 'down') {
                     this.nodPhase = 'going_down';
                     this.nodStartTime = now;
-                    console.log('开始点头 - 向下阶段');
+                    console.log('Starting nod - downward phase');
                 } else if (currentDirection === 'up') {
                     this.nodPhase = 'going_up';
                     this.nodStartTime = now;
-                    console.log('开始抬头 - 向上阶段');
+                    console.log('Starting head-up - upward phase');
                 }
                 break;
 
             case 'going_down':
-                // 如果从向下阶段返回，则完成一次“下-上”晃头
+                // If returning from downward phase, complete one "down-up" head shake
                 if (currentDirection === 'up' || currentDirection === 'center') {
-                    if (now - this.nodStartTime > 100) { // 防抖
+                    if (now - this.nodStartTime > 100) { // Debounce
                         this.nodPhase = 'completed';
-                        console.log('晃头(下-上)完成，触发下降');
+                        console.log('Head shake (down-up) completed, triggering drop');
                         this.triggerNodDrop();
                     } else {
-                        this.nodPhase = 'waiting'; // 动作太快，重置
+                        this.nodPhase = 'waiting'; // Action too fast, reset
                     }
                 } else if (now - this.nodStartTime > 1000) {
-                    // 超时重置
+                    // Timeout reset
                     this.nodPhase = 'waiting';
                 }
                 break;
 
             case 'going_up':
-                // 如果从向上阶段返回，则完成一次“上-下”晃头
+                // If returning from upward phase, complete one "up-down" head shake
                 if (currentDirection === 'down' || currentDirection === 'center') {
-                    if (now - this.nodStartTime > 100) { // 防抖
+                    if (now - this.nodStartTime > 100) { // Debounce
                         this.nodPhase = 'completed';
-                        console.log('晃头(上-下)完成，触发下降');
+                        console.log('Head shake (up-down) completed, triggering drop');
                         this.triggerNodDrop();
                     } else {
-                        this.nodPhase = 'waiting'; // 动作太快，重置
+                        this.nodPhase = 'waiting'; // Action too fast, reset
                     }
                 } else if (now - this.nodStartTime > 1000) {
-                    // 超时重置
+                    // Timeout reset
                     this.nodPhase = 'waiting';
                 }
                 break;
 
             case 'completed':
-                // 等待头部回到中心位置，准备下一次检测
+                // Wait for head to return to center position, prepare for next detection
                 if (currentDirection === 'center') {
                     this.nodPhase = 'waiting';
                 } else if (now - this.nodStartTime > 2000) {
-                    // 超时强制重置
+                    // Timeout force reset
                     this.nodPhase = 'waiting';
                 }
                 break;
         }
 
-        return false; // 不需要持续加速
+        return false; // No continuous acceleration needed
     }
     
-    // 触发点头下降
+    // Trigger nod drop
     triggerNodDrop() {
         const now = Date.now();
 
-        // 冷却时间检查，防止过于频繁
+        // Cooldown check, prevent too frequent
         if (now - this.lastNodTime < this.nodCooldown) {
             return;
         }
@@ -514,15 +532,15 @@ class HeadControl {
         this.lastNodTime = now;
 
         if (this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
-            console.log('点头/晃头触发，执行下降三格');
+            console.log('Nod/Head shake triggered, performing 3-cell drop');
 
             for (let i = 0; i < 3; i++) {
-                // 尝试下降
+                // Attempt drop
                 if (!this.tetrisGame.movePiece(0, 1)) {
-                    // 如果任何一次下降失败，意味着方块已经触底
-                    console.log(`下降第 ${i + 1} 格失败，方块触底立即固定`);
-                    this.tetrisGame.dropTime = this.tetrisGame.dropInterval; // 强制立即锁定
-                    break; // 停止尝试继续下降
+                    // If any drop fails, it means the piece has hit bottom
+                    console.log(`Drop ${i + 1} cell failed, piece hit bottom and locked immediately`);
+                    this.tetrisGame.dropTime = this.tetrisGame.dropInterval; // Force immediate lock
+                    break; // Stop attempting further drops
                 }
             }
         }
@@ -559,9 +577,9 @@ class HeadControl {
     executeAction(action) {
         if (!this.tetrisGame.gameRunning) return;
         
-        // 在加速状态下只禁用移动操作，允许旋转
+        // Only disable move operations in accelerated state, allow rotation
         if (this.isAcceleratingDrop && (action === 'left' || action === 'right')) {
-            console.log('加速状态下禁用移动操作:', action);
+            console.log('Move operation disabled in accelerated state:', action);
             return;
         }
         
@@ -582,31 +600,31 @@ class HeadControl {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
         
-        // 先绘制美白面部填充
+        // First draw face fill for beautification
         this.drawFaceFill(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // 绘制美化的面部轮廓
+        // Draw beautified face contour
         this.drawBeautifiedFaceContour(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // 绘制美化的眼睛
+        // Draw beautified eyes
         this.drawBeautifiedEyes(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // 绘制美化的嘴巴
+        // Draw beautified mouth
         this.drawBeautifiedMouth(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // 绘制美化的鼻子
+        // Draw beautified nose
         this.drawBeautifiedNose(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // 绘制美化的眉毛
+        // Draw beautified eyebrows
         this.drawBeautifiedEyebrows(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // 添加面部高光效果
+        // Add face highlight effect
         this.drawFaceHighlights(ctx, landmarks, canvasWidth, canvasHeight);
     }
     
-    // 绘制自然的面部高光效果
+    // Draw natural face highlight effect
     drawFaceHighlights(ctx, landmarks, width, height) {
-        // 轻微的鼻梁高光
+        // Subtle nose bridge highlight
         const noseHighlight = landmarks[9];
         if (noseHighlight) {
             const x = noseHighlight.x * width;
@@ -623,7 +641,7 @@ class HeadControl {
             ctx.fill();
         }
         
-        // 脸颊的自然腮红
+        // Natural blush on cheeks
         const leftCheek = landmarks[116];
         const rightCheek = landmarks[345];
         
@@ -635,13 +653,13 @@ class HeadControl {
         }
     }
     
-    // 绘制自然腮红
+    // Draw natural blush
     drawNaturalBlush(ctx, x, y) {
-        // 主要腮红渐变 - 自然粉色
+        // Main blush gradient - natural pink
         const blushGradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
-        blushGradient.addColorStop(0, 'rgba(255, 182, 193, 0.2)'); // 淡粉色中心
-        blushGradient.addColorStop(0.4, 'rgba(255, 192, 203, 0.15)'); // 浅粉色
-        blushGradient.addColorStop(0.7, 'rgba(255, 218, 185, 0.1)'); // 桃色
+        blushGradient.addColorStop(0, 'rgba(255, 182, 193, 0.2)'); // Light pink center
+        blushGradient.addColorStop(0.4, 'rgba(255, 192, 203, 0.15)'); // Light pink
+        blushGradient.addColorStop(0.7, 'rgba(255, 218, 185, 0.1)'); // Peach color
         blushGradient.addColorStop(1, 'rgba(255, 228, 225, 0)');
         
         ctx.fillStyle = blushGradient;
@@ -650,10 +668,10 @@ class HeadControl {
         ctx.fill();
     }
     
-    // 绘制脸颊高光
+    // Draw cheek highlight
     drawCheekHighlight(ctx, x, y) {
         const gradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
-        gradient.addColorStop(0, 'rgba(255, 182, 193, 0.2)'); // 淡粉色
+        gradient.addColorStop(0, 'rgba(255, 182, 193, 0.2)'); // Light pink
         gradient.addColorStop(0.5, 'rgba(255, 192, 203, 0.1)');
         gradient.addColorStop(1, 'rgba(255, 192, 203, 0)');
         
@@ -663,38 +681,38 @@ class HeadControl {
         ctx.fill();
     }
     
-    // 绘制校准进度
+    // Draw calibration progress
     drawCalibrationProgress(ctx) {
         const progress = this.calibrationFrames / this.maxCalibrationFrames;
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
         
-        // 绘制半透明背景
+        // Draw translucent background
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
         
-        // 响应式校准框尺寸
+        // Responsive calibration box size
         const boxWidth = Math.min(canvasWidth * 0.9, 250);
         const boxHeight = Math.min(canvasHeight * 0.6, 100);
         const boxX = (canvasWidth - boxWidth) / 2;
         const boxY = (canvasHeight - boxHeight) / 2;
         
-        // 背景框
+        // Background box
         ctx.fillStyle = 'rgba(78, 205, 196, 0.2)';
         ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
         
-        // 边框
+        // Border
         ctx.strokeStyle = '#4ecdc4';
         ctx.lineWidth = 2;
         ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
         
-        // 标题
+        // Title
         ctx.fillStyle = '#4ecdc4';
         ctx.font = `bold ${Math.min(16, boxWidth / 15)}px Arial`;
         ctx.textAlign = 'center';
         ctx.fillText('🎯 Calibrating', canvasWidth / 2, boxY + boxHeight * 0.3);
         
-        // 进度条背景
+        // Progress bar background
         const progressBarWidth = boxWidth * 0.8;
         const progressBarHeight = Math.min(16, boxHeight * 0.2);
         const progressBarX = (canvasWidth - progressBarWidth) / 2;
@@ -703,7 +721,7 @@ class HeadControl {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fillRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
         
-        // 进度条
+        // Progress bar
         const progressWidth = progressBarWidth * progress;
         const gradient = ctx.createLinearGradient(progressBarX, 0, progressBarX + progressWidth, 0);
         gradient.addColorStop(0, '#4ecdc4');
@@ -712,26 +730,26 @@ class HeadControl {
         ctx.fillStyle = gradient;
         ctx.fillRect(progressBarX, progressBarY, progressWidth, progressBarHeight);
         
-        // 进度条边框
+        // Progress bar边框
         ctx.strokeStyle = '#4ecdc4';
         ctx.lineWidth = 1;
         ctx.strokeRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
         
-        // 进度百分比
+        // Progress percentage
         ctx.fillStyle = '#ffffff';
         ctx.font = `${Math.min(14, boxWidth / 18)}px Arial`;
         ctx.fillText(`${Math.round(progress * 100)}%`, canvasWidth / 2, progressBarY + progressBarHeight - 2);
         
-        // 提示文字
+        // Hint text
         ctx.fillStyle = '#ffffff';
         ctx.font = `${Math.min(12, boxWidth / 20)}px Arial`;
         ctx.fillText('Face the camera', canvasWidth / 2, boxY + boxHeight * 0.85);
         
-        // 重置文本对齐
+        // Reset text alignment
         ctx.textAlign = 'left';
     }
     
-    // 绘制校准完成提示
+    // Draw calibration complete prompt
     drawCalibrationComplete(ctx) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
@@ -774,7 +792,7 @@ class HeadControl {
         ctx.textBaseline = 'alphabetic';
     }
     
-    // 绘制迷你状态指示器（右上角小图标）
+    // Draw mini status indicator (top-right small icon)
     drawMiniStatus(ctx, landmarks) {
         if (!this.baselineNose || !landmarks) return;
         
@@ -828,7 +846,7 @@ class HeadControl {
         }
     }
     
-    // 绘制自然的面部填充（去除过度美白）
+    // Draw natural face fill (remove excessive whitening)
     drawFaceFill(ctx, landmarks, width, height) {
         const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
         
@@ -847,25 +865,25 @@ class HeadControl {
         }
         ctx.closePath();
         
-        // 自然肌肤色调，参考凌波丽的真实肤色
+        // Natural skin tone, referencing Rei Ayanami's actual skin color
         const centerX = width / 2;
         const centerY = height / 2;
         const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.min(width, height) / 2);
-        gradient.addColorStop(0, 'rgba(245, 235, 225, 0.4)'); // 自然肤色中心
-        gradient.addColorStop(0.4, 'rgba(240, 228, 218, 0.3)'); // 温暖肤色
-        gradient.addColorStop(0.7, 'rgba(235, 220, 210, 0.2)'); // 自然过渡
-        gradient.addColorStop(1, 'rgba(230, 215, 205, 0.1)'); // 柔和边缘
+        gradient.addColorStop(0, 'rgba(245, 235, 225, 0.4)'); // Natural skin tone center
+        gradient.addColorStop(0.4, 'rgba(240, 228, 218, 0.3)'); // Warm skin tone
+        gradient.addColorStop(0.7, 'rgba(235, 220, 210, 0.2)'); // Natural transition
+        gradient.addColorStop(1, 'rgba(230, 215, 205, 0.1)'); // Soft edge
         
         ctx.fillStyle = gradient;
         ctx.fill();
     }
 
-    // 绘制自然精致的面部轮廓（参考凌波丽风格）
+    // Draw natural and delicate face contour (referencing Rei Ayanami style)
     drawBeautifiedFaceContour(ctx, landmarks, width, height) {
         const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
         
-        // 主轮廓线 - 自然的肤色边界
-        ctx.strokeStyle = 'rgba(160, 140, 120, 0.5)'; // 自然肤色轮廓
+        // Main contour line - natural skin tone boundary
+        ctx.strokeStyle = 'rgba(160, 140, 120, 0.5)'; // Natural skin tone contour
         ctx.lineWidth = 1.8;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -885,8 +903,8 @@ class HeadControl {
         ctx.closePath();
         ctx.stroke();
         
-        // 内层精致线条 - 柔和的阴影定义
-        ctx.strokeStyle = 'rgba(140, 120, 100, 0.3)'; // 淡褐色阴影
+        // Inner delicate lines - soft shadow definition
+        ctx.strokeStyle = 'rgba(140, 120, 100, 0.3)'; // Light brown shadow
         ctx.lineWidth = 0.8;
         ctx.beginPath();
         for (let i = 0; i < faceOval.length; i++) {
@@ -905,34 +923,34 @@ class HeadControl {
         ctx.stroke();
     }
     
-    // 绘制美化的眼睛
+    // Draw beautified eyes
     drawBeautifiedEyes(ctx, landmarks, width, height) {
-        // 左眼轮廓
+        // Left eye contour
         const leftEye = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
-        // 右眼轮廓
+        // Right eye contour
         const rightEye = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398];
         
-        // 绘制眼部填充
+        // Draw eye fill
         this.drawEyeFill(ctx, landmarks, leftEye, width, height);
         this.drawEyeFill(ctx, landmarks, rightEye, width, height);
         
-        // 绘制眼部轮廓 - 柔和外层
+        // Draw eye contour - soft outer layer
         ctx.strokeStyle = 'rgba(69, 183, 209, 0.4)';
         ctx.lineWidth = 3;
         this.drawEyeContour(ctx, landmarks, leftEye, width, height);
         this.drawEyeContour(ctx, landmarks, rightEye, width, height);
         
-        // 绘制眼部轮廓 - 清晰内层
+        // Draw eye contour - clear inner layer
         ctx.strokeStyle = '#45b7d1';
         ctx.lineWidth = 1.2;
         this.drawEyeContour(ctx, landmarks, leftEye, width, height);
         this.drawEyeContour(ctx, landmarks, rightEye, width, height);
         
-        // 绘制美化的瞳孔
+        // Draw beautified pupils
         this.drawBeautifiedPupils(ctx, landmarks, width, height);
     }
     
-    // 绘制眼部填充
+    // Draw eye fill
     drawEyeFill(ctx, landmarks, eyePoints, width, height) {
         ctx.beginPath();
         for (let i = 0; i < eyePoints.length; i++) {
@@ -973,7 +991,7 @@ class HeadControl {
         ctx.stroke();
     }
     
-    // 绘制美化的瞳孔
+    // Draw beautified pupils
     drawBeautifiedPupils(ctx, landmarks, width, height) {
         const leftPupil = landmarks[468]; // 左眼中心
         const rightPupil = landmarks[473]; // 右眼中心
@@ -986,47 +1004,47 @@ class HeadControl {
         }
     }
     
-    // 绘制自然的蓝色瞳孔（参考凌波丽）
+    // Draw natural blue pupils (referencing Rei Ayanami)
     drawPupil(ctx, x, y) {
-        // 虹膜 - 自然的蓝色渐变
+        // Iris - natural blue gradient
         const irisGradient = ctx.createRadialGradient(x, y, 0, x, y, 6);
-        irisGradient.addColorStop(0, 'rgba(70, 130, 180, 0.8)'); // 钢蓝色中心
-        irisGradient.addColorStop(0.5, 'rgba(100, 149, 237, 0.7)'); // 矢车菊蓝
-        irisGradient.addColorStop(0.8, 'rgba(65, 105, 225, 0.6)'); // 皇家蓝
-        irisGradient.addColorStop(1, 'rgba(30, 60, 120, 0.5)'); // 深蓝边缘
+        irisGradient.addColorStop(0, 'rgba(70, 130, 180, 0.8)'); // Steel blue center
+        irisGradient.addColorStop(0.5, 'rgba(100, 149, 237, 0.7)'); // Cornflower blue
+        irisGradient.addColorStop(0.8, 'rgba(65, 105, 225, 0.6)'); // Royal blue
+        irisGradient.addColorStop(1, 'rgba(30, 60, 120, 0.5)'); // Dark blue edge
         
         ctx.fillStyle = irisGradient;
         ctx.beginPath();
         ctx.arc(x, y, 6, 0, 2 * Math.PI);
         ctx.fill();
         
-        // 瞳孔
-        ctx.fillStyle = 'rgba(20, 20, 60, 0.9)'; // 深色瞳孔
+        // Pupil
+        ctx.fillStyle = 'rgba(20, 20, 60, 0.9)'; // Dark pupil
         ctx.beginPath();
         ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
         ctx.fill();
         
-        // 自然高光
+        // Natural highlight
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
         ctx.arc(x - 1, y - 1, 1.2, 0, 2 * Math.PI);
         ctx.fill();
         
-        // 次要高光
+        // Secondary highlight
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.beginPath();
         ctx.arc(x + 1.5, y + 1.5, 0.6, 0, 2 * Math.PI);
         ctx.fill();
     }
     
-    // 绘制美化的嘴巴
+    // Draw beautified mouth
     drawBeautifiedMouth(ctx, landmarks, width, height) {
-        // 嘴巴外轮廓
+        // Mouth outer contour
         const mouthOuter = [61, 84, 17, 314, 405, 320, 307, 375, 321, 308, 324, 318];
-        // 嘴巴内轮廓
+        // Mouth inner contour
         const mouthInner = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324];
         
-        // 绘制嘴唇填充
+        // Draw lip fill
         ctx.beginPath();
         for (let i = 0; i < mouthOuter.length; i++) {
             const point = landmarks[mouthOuter[i]];
@@ -1042,23 +1060,23 @@ class HeadControl {
         }
         ctx.closePath();
         
-        // 凌波丽风格的精致嘴唇渐变
+        // Rei Ayanami style delicate lip gradient
         const mouthCenter = landmarks[13];
         if (mouthCenter) {
             const centerX = mouthCenter.x * width;
             const centerY = mouthCenter.y * height;
             
-            // 主要嘴唇渐变 - 更加精致的粉色
+            // Main lip gradient - more delicate pink
             const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 18);
-            gradient.addColorStop(0, 'rgba(255, 192, 203, 0.8)'); // 淡粉色中心
-            gradient.addColorStop(0.4, 'rgba(255, 182, 193, 0.6)'); // 浅粉色
-            gradient.addColorStop(0.7, 'rgba(255, 160, 180, 0.4)'); // 中等粉色
-            gradient.addColorStop(1, 'rgba(255, 140, 160, 0.2)'); // 边缘粉色
+            gradient.addColorStop(0, 'rgba(255, 192, 203, 0.8)'); // Light pink center
+            gradient.addColorStop(0.4, 'rgba(255, 182, 193, 0.6)'); // Light pink
+            gradient.addColorStop(0.7, 'rgba(255, 160, 180, 0.4)'); // Medium pink
+            gradient.addColorStop(1, 'rgba(255, 140, 160, 0.2)'); // Edge pink
             
             ctx.fillStyle = gradient;
             ctx.fill();
             
-            // 嘴唇高光 - 动漫风格的光泽感
+            // Lip highlight - anime style gloss
             const highlightGradient = ctx.createLinearGradient(centerX - 10, centerY - 3, centerX + 10, centerY + 3);
             highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
             highlightGradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.4)');
@@ -1071,7 +1089,7 @@ class HeadControl {
             ctx.fill();
         }
         
-        // 外层轮廓 - 柔和光晕
+        // Outer contour - soft halo
         ctx.strokeStyle = 'rgba(255, 107, 107, 0.4)';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -1090,7 +1108,7 @@ class HeadControl {
         ctx.closePath();
         ctx.stroke();
         
-        // 内层轮廓 - 清晰线条
+        // Inner contour - clear lines
         ctx.strokeStyle = '#ff6b6b';
         ctx.lineWidth = 1.2;
         ctx.beginPath();
@@ -1109,7 +1127,7 @@ class HeadControl {
         ctx.closePath();
         ctx.stroke();
         
-        // 嘴唇分界线
+        // Lip demarcation line
         ctx.strokeStyle = 'rgba(255, 138, 138, 0.8)';
         ctx.lineWidth = 0.8;
         ctx.beginPath();
@@ -1129,12 +1147,12 @@ class HeadControl {
         ctx.stroke();
     }
     
-    // 绘制美化的鼻子
+    // Draw beautified nose
     drawBeautifiedNose(ctx, landmarks, width, height) {
-        // 鼻梁
+        // Nose bridge
         const noseBridge = [6, 8, 9, 10, 151];
         
-        // 鼻梁外层光晕
+        // Nose bridge外层光晕
         ctx.strokeStyle = 'rgba(255, 165, 0, 0.3)';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -1152,7 +1170,7 @@ class HeadControl {
         }
         ctx.stroke();
         
-        // 鼻梁内层线条
+        // Nose bridge内层线条
         ctx.strokeStyle = 'rgba(255, 165, 0, 0.7)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -1170,13 +1188,13 @@ class HeadControl {
         }
         ctx.stroke();
         
-        // 鼻尖高光
+        // Nose tip highlight
         const noseTip = landmarks[1];
         if (noseTip) {
             const x = noseTip.x * width;
             const y = noseTip.y * height;
             
-            // 外层光晕
+            // Outer halo
             const gradient = ctx.createRadialGradient(x, y, 0, x, y, 6);
             gradient.addColorStop(0, 'rgba(255, 165, 0, 0.6)');
             gradient.addColorStop(0.7, 'rgba(255, 165, 0, 0.3)');
@@ -1187,14 +1205,14 @@ class HeadControl {
             ctx.arc(x, y, 6, 0, 2 * Math.PI);
             ctx.fill();
             
-            // 内层高光
+            // Inner highlight
             ctx.fillStyle = 'rgba(255, 200, 100, 0.8)';
             ctx.beginPath();
             ctx.arc(x, y, 2, 0, 2 * Math.PI);
             ctx.fill();
         }
         
-        // 鼻孔 - 更自然的颜色
+        // Nostrils - more natural color
         const leftNostril = landmarks[220];
         const rightNostril = landmarks[305];
         
@@ -1206,37 +1224,37 @@ class HeadControl {
         }
     }
     
-    // 绘制鼻孔
+    // Draw nostrils
     drawNostril(ctx, x, y) {
-        // 外层阴影
+        // Outer shadow
         ctx.fillStyle = 'rgba(139, 69, 19, 0.3)';
         ctx.beginPath();
         ctx.arc(x, y, 3, 0, 2 * Math.PI);
         ctx.fill();
         
-        // 内层鼻孔
+        // Inner nostril
         ctx.fillStyle = 'rgba(139, 69, 19, 0.6)';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
         ctx.fill();
     }
     
-    // 绘制美化的眉毛
+    // Draw beautified eyebrows
     drawBeautifiedEyebrows(ctx, landmarks, width, height) {
-        // 左眉毛关键点
+        // Left eyebrow key points
         const leftEyebrow = [46, 53, 52, 51, 48];
-        // 右眉毛关键点
+        // Right eyebrow key points
         const rightEyebrow = [276, 283, 282, 295, 285];
         
-        // 绘制左眉毛
+        // Draw left eyebrow
         this.drawEyebrow(ctx, landmarks, leftEyebrow, width, height);
-        // 绘制右眉毛
+        // Draw right eyebrow
         this.drawEyebrow(ctx, landmarks, rightEyebrow, width, height);
     }
     
-    // 绘制单个眉毛
+    // Draw single eyebrow
     drawEyebrow(ctx, landmarks, eyebrowPoints, width, height) {
-        // 外层光晕
+        // Outer halo
         ctx.strokeStyle = 'rgba(139, 69, 19, 0.4)';
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
@@ -1257,7 +1275,7 @@ class HeadControl {
         }
         ctx.stroke();
         
-        // 内层眉毛
+        // Inner eyebrow
         ctx.strokeStyle = 'rgba(101, 67, 33, 0.8)';
         ctx.lineWidth = 2;
         
@@ -1276,7 +1294,7 @@ class HeadControl {
         }
         ctx.stroke();
         
-        // 眉毛毛发效果
+        // Eyebrow hair effect
         ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
         ctx.lineWidth = 0.8;
         
@@ -1290,7 +1308,7 @@ class HeadControl {
                 const x2 = point2.x * width;
                 const y2 = point2.y * height;
                 
-                // 绘制几根毛发线条
+                // Draw a few hair lines
                 for (let j = 0; j < 3; j++) {
                     const t = j / 2;
                     const x = x1 + (x2 - x1) * t;
@@ -1377,7 +1395,7 @@ class HeadControl {
     }
     
     resetDropSpeed() {
-        // 点头是瞬时动作，不需要重置持续状态
+        // Nod is an instantaneous action, no need to reset continuous state
         this.nodPhase = 'waiting';
         this.nodStartTime = 0;
     }

@@ -41,7 +41,7 @@ class MobileTouchHandler {
             e.preventDefault();
         }, { passive: false });
         
-        // 触摸结束
+        // Touch end
         canvas.addEventListener('touchend', (e) => {
             e.preventDefault();
             if (!this.isTouch) return;
@@ -128,7 +128,7 @@ class MobileTouchHandler {
                     this.triggerGameAction(buttons[id]);
                 }, { passive: false });
                 
-                // 触摸结束
+                // Touch end
                 btn.addEventListener('touchend', (e) => {
                     e.preventDefault();
                     this.removeTouchFeedback(btn);
@@ -311,7 +311,7 @@ if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
     });
 }
 
-// 导出类供其他模块使用
+// Export class for use by other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = MobileTouchHandler;
 } else {

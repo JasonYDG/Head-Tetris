@@ -527,7 +527,7 @@ body {
 #start-btn:active {
     transform: translateY(0);
 }/* 背景音乐
-按钮样式 */
+Button Styles */
 /* BGM button styles */
 button[onclick="toggleBGM()"] {
     position: relative;

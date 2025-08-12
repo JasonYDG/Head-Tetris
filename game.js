@@ -1,6 +1,7 @@
 // 游戏主控制器
 let tetrisGame;
 let headControl;
+let isPausedByCamera = false; // New flag
 
 // 排行榜数据
 let leaderboard = [];
@@ -122,6 +123,28 @@ function hideGameOverModal() {
     finalScoreDisplay.style.animation = '';
 }
 
+// Callback for head control to notify face detection status changes
+function onFaceStatusChangeCallback(isDetected) {
+    if (isDetected) {
+        // Face detected
+        if (isPausedByCamera) { // Only resume if paused specifically by camera
+            console.log('Face detected, resuming game...');
+            tetrisGame.start();
+            isPausedByCamera = false;
+            updateButtonStates();
+        }
+    } else {
+        // No face detected
+        // Only pause if game is currently running AND not already paused by user
+        if (tetrisGame.gameRunning && !isPausedByCamera) {
+            console.log('No face detected, pausing game...');
+            tetrisGame.pause();
+            isPausedByCamera = true;
+            updateButtonStates();
+        }
+    }
+}
+
 // 检查新纪录并更新排行榜
 function checkAndUpdateLeaderboard(finalScore) {
     // 检查是否进入排行榜前三
@@ -198,7 +221,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // 调整画布尺寸
         adjustCanvasSize();
 
-        headControl = new HeadControl(tetrisGame, onCalibrationComplete);
+        headControl = new HeadControl(tetrisGame, onCalibrationComplete, onFaceStatusChangeCallback);
         window.headControl = headControl; // 暴露到全局作用域供tetris.js访问
         window.startGameAutomatically = startGameAutomatically; // 暴露启动函数到全局作用域
         window.updateButtonStates = updateButtonStates; // 暴露按钮状态更新函数到全局作用域
@@ -425,6 +448,7 @@ function setupEventListeners() {
     // 暂停游戏按钮
     document.getElementById('pause-btn').addEventListener('click', () => {
         tetrisGame.pause();
+        isPausedByCamera = false; // User manually paused, clear camera pause flag
         updateButtonStates();
     });
 
@@ -517,6 +541,7 @@ async function startGameAutomatically() {
 
         console.log('Auto-starting game');
         gameInstance.start();
+        isPausedByCamera = false; // Game started manually, clear camera pause flag
 
         const updateFunc = window.updateButtonStates || updateButtonStates;
         if (updateFunc) {
@@ -566,7 +591,7 @@ function setupAudioSystem() {
 
     try {
         // 用户交互后才能创建音频上下文
-        document.addEventListener('click', createAudioFiles, { once: true });
+        // document.addEventListener('click', createAudioFiles, { once: true }); // Removed this line
         console.log('音效系统已设置');
     } catch (error) {
         console.error('音效系统设置失败:', error);
@@ -602,7 +627,7 @@ function createAudioFiles() {
         if (audioContext.state === 'suspended') {
             audioContext.resume().then(() => {
                 console.log('Audio context activated for sound effects');
-                // 如果BGM控制器存在且应该播放，启动BGM
+                // If BGM controller exists and should play, start BGM
                 if (window.bgmControl && window.bgmControl.isOn && !window.bgmControl.isPlaying) {
                     setTimeout(() => {
                         window.bgmControl.start();
@@ -781,7 +806,7 @@ function createAudioFiles() {
 
         console.log('音效系统初始化完成');
 
-        // 创建背景音乐
+        // Create background music
         createBackgroundMusic();
 
     } catch (error) {
@@ -832,11 +857,11 @@ function setupSensitivityControls() {
     });
 }
 
-// 创建背景音乐
+// Create background music
 function createBackgroundMusic() {
     // BGM 控制器
     window.bgmControl = {
-        isOn: true,
+        isOn: false,
         audioContext: null,
         oscillators: [],
         gainNode: null,
@@ -929,70 +954,51 @@ function createBackgroundMusic() {
         
         getMelodies() {
             return [
-                // Tetris Theme A (Korobeiniki)
+                // Tetris Theme A (Korobeiniki) - Full Version
                 [
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 494, duration: 0.2 }, // B4
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 587, duration: 0.4 }, // D5
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 494, duration: 0.2 }, // B4
-                    { freq: 440, duration: 0.6 }, // A4
-                    { freq: 440, duration: 0.2 }, // A4
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 587, duration: 0.2 }, // D5
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 494, duration: 0.6 }, // B4
-                    { freq: 494, duration: 0.2 }, // B4
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 587, duration: 0.4 }, // D5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 440, duration: 0.4 }, // A4
-                    { freq: 440, duration: 0.8 }  // A4
-                ],
-                // Tetris Theme B (Variation)
-                [
-                    { freq: 587, duration: 0.6 }, // D5
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 494, duration: 0.4 }, // B4
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 587, duration: 0.4 }, // D5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 698, duration: 0.4 }, // F5
-                    { freq: 784, duration: 0.6 }, // G5
-                    { freq: 659, duration: 0.2 }, // E5
-                    { freq: 587, duration: 0.4 }, // D5
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 494, duration: 0.4 }, // B4
-                    { freq: 440, duration: 0.6 }, // A4
-                    { freq: 523, duration: 0.2 }, // C5
-                    { freq: 587, duration: 0.4 }, // D5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 440, duration: 0.8 }  // A4
-                ],
-                // Tetris Theme C (Harmony)
-                [
-                    { freq: 440, duration: 0.4 }, // A4
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 784, duration: 0.4 }, // G5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 587, duration: 0.6 }, // D5
-                    { freq: 494, duration: 0.2 }, // B4
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 587, duration: 0.4 }, // D5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 698, duration: 0.4 }, // F5
-                    { freq: 784, duration: 0.6 }, // G5
-                    { freq: 880, duration: 0.2 }, // A5
-                    { freq: 784, duration: 0.4 }, // G5
-                    { freq: 659, duration: 0.4 }, // E5
-                    { freq: 523, duration: 0.4 }, // C5
-                    { freq: 440, duration: 0.8 }  // A4
+                    { freq: 659.25, duration: 0.4 }, // E5
+                    { freq: 493.88, duration: 0.2 }, // B4
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 587.33, duration: 0.4 }, // D5
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 493.88, duration: 0.2 }, // B4
+                    { freq: 440.00, duration: 0.6 }, // A4
+                    
+                    { freq: 440.00, duration: 0.2 }, // A4
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 659.25, duration: 0.4 }, // E5
+                    { freq: 587.33, duration: 0.2 }, // D5
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 493.88, duration: 0.6 }, // B4
+                    
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 587.33, duration: 0.4 }, // D5
+                    { freq: 659.25, duration: 0.4 }, // E5
+                    { freq: 523.25, duration: 0.4 }, // C5
+                    { freq: 440.00, duration: 0.4 }, // A4
+                    { freq: 440.00, duration: 0.8 }, // A4
+
+                    // Second part of the theme
+                    { freq: 587.33, duration: 0.4 }, // D5
+                    { freq: 698.46, duration: 0.2 }, // F5
+                    { freq: 880.00, duration: 0.4 }, // A5
+                    { freq: 783.99, duration: 0.2 }, // G5
+                    { freq: 698.46, duration: 0.2 }, // F5
+                    { freq: 659.25, duration: 0.6 }, // E5
+
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 659.25, duration: 0.4 }, // E5
+                    { freq: 587.33, duration: 0.2 }, // D5
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 493.88, duration: 0.6 }, // B4
+
+                    { freq: 493.88, duration: 0.2 }, // B4
+                    { freq: 523.25, duration: 0.2 }, // C5
+                    { freq: 587.33, duration: 0.4 }, // D5
+                    { freq: 659.25, duration: 0.4 }, // E5
+                    { freq: 523.25, duration: 0.4 }, // C5
+                    { freq: 440.00, duration: 0.4 }, // A4
+                    { freq: 440.00, duration: 0.8 }  // A4
                 ]
             ];
         },
@@ -1121,8 +1127,27 @@ function initBGMButtonState() {
 
 // 切换BGM播放状态
 function toggleBGM() {
+    // Ensure audio files and bgmControl are initialized
+    // This function should be called only once on first user interaction
+    if (!window.bgmControl) { // Check if bgmControl is not yet initialized
+        createAudioFiles(); // This will create window.bgmControl and setup tetrisGame.playSound
+    }
+
     if (window.bgmControl) {
-        window.bgmControl.toggle();
+        const audioContext = getAudioContext();
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log('Audio context resumed by BGM button click');
+                window.bgmControl.toggle();
+            }).catch(err => {
+                console.warn('Audio context resume failed on BGM button click:', err);
+                window.bgmControl.toggle(); // Still try to toggle
+            });
+        } else {
+            window.bgmControl.toggle();
+        }
+    } else {
+        console.error('BGM Control not initialized.');
     }
 }
 
@@ -1156,10 +1181,10 @@ function adjustCanvasSize() {
         let canvasWidth, canvasHeight;
         
         if (containerWidth * 2 <= containerHeight) {
-            canvasWidth = Math.min(containerWidth, 300);
+            canvasWidth = Math.min(containerWidth, 390); // 30% larger
             canvasHeight = canvasWidth * 2;
         } else {
-            canvasHeight = Math.min(containerHeight, 600);
+            canvasHeight = Math.min(containerHeight, 780); // 30% larger
             canvasWidth = canvasHeight / 2;
         }
         
@@ -1216,7 +1241,7 @@ function recalibrateVertical() {
     }
 }
 
-// 切换调试信息显示
+// Toggle debug information display
 function toggleDebug() {
     const debugInfo = document.getElementById('debug-info');
     if (debugInfo) {

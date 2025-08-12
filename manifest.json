@@ -1,7 +1,7 @@
 {
   "name": "Neural Tetris AI - 头部控制俄罗斯方块",
   "short_name": "Neural Tetris",
-  "description": "创新的俄罗斯方块游戏，使用头部动作控制，带有AI面部识别技术",
+  "description": "Innovative Tetris game with head movement control and AI facial recognition technology",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

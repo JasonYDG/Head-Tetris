@@ -15,7 +15,7 @@ class TetrisGame {
         
         this.BOARD_WIDTH = 10;
         this.BOARD_HEIGHT = 20;
-        this.BLOCK_SIZE = 30;
+        this.BLOCK_SIZE = 0; // Will be calculated dynamically
         
         this.board = [];
         this.currentPiece = null;
@@ -43,6 +43,7 @@ class TetrisGame {
         this.initBoard();
         this.generateNextPiece();
         this.spawnPiece();
+        this.updateBlockSize(); // Call here after canvas is initialized
         
         // 音效 - 现在使用Web Audio API，保留引用用于兼容性
         this.sounds = {
@@ -577,7 +578,7 @@ class TetrisGame {
         
         // 播放方块固定音效
         this.playSound('pieceLock');
-        console.log('方块已固定，播放固定音效');
+        console.log('Piece locked, playing lock sound effect');
     }
     
     clearLines() {
@@ -634,11 +635,30 @@ class TetrisGame {
         document.getElementById('lines').textContent = this.lines;
     }
     
+    // New method to update BLOCK_SIZE based on canvas dimensions
+    updateBlockSize() {
+        if (this.canvas && this.BOARD_WIDTH && this.BOARD_HEIGHT) {
+            // Set canvas drawing buffer size to match its rendered size (from CSS)
+            // Use Math.floor to ensure integer dimensions for clientWidth/Height
+            this.canvas.width = Math.floor(this.canvas.clientWidth);
+            this.canvas.height = Math.floor(this.canvas.clientHeight);
+            
+            // Calculate BLOCK_SIZE based on actual canvas width, ensuring it's an integer
+            this.BLOCK_SIZE = Math.floor(this.canvas.width / this.BOARD_WIDTH);
+            
+            // Ensure the canvas dimensions are perfectly divisible by BLOCK_SIZE
+            // This is crucial for grid alignment
+            this.canvas.width = this.BLOCK_SIZE * this.BOARD_WIDTH;
+            this.canvas.height = this.BLOCK_SIZE * this.BOARD_HEIGHT;
+        }
+    }
+
     draw() {
         if (!this.ctx || !this.canvas) {
             console.error('Canvas or context not available for drawing');
             return;
         }
+        this.updateBlockSize(); // Ensure BLOCK_SIZE is updated before drawing
         
         console.log('Drawing game, canvas size:', this.canvas.width, 'x', this.canvas.height);
         
@@ -686,7 +706,8 @@ class TetrisGame {
         for (let y = 0; y < this.BOARD_HEIGHT; y++) {
             for (let x = 0; x < this.BOARD_WIDTH; x++) {
                 if (this.board[y][x]) {
-                    this.drawBlock(x * this.BLOCK_SIZE, y * this.BLOCK_SIZE, this.board[y][x], this.ctx);
+                    // Pass boardX, boardY, and total board dimensions
+                    this.drawBlock(x * this.BLOCK_SIZE, y * this.BLOCK_SIZE, this.board[y][x], this.ctx, x, y, this.BOARD_WIDTH, this.BOARD_HEIGHT);
                 }
             }
         }
@@ -698,26 +719,95 @@ class TetrisGame {
                 if (piece.shape[y][x]) {
                     const drawX = (piece.x + x) * this.BLOCK_SIZE;
                     const drawY = (piece.y + y) * this.BLOCK_SIZE;
-                    this.drawBlock(drawX, drawY, piece.color, context);
+                    // Pass boardX, boardY, and total board dimensions
+                    this.drawBlock(drawX, drawY, piece.color, context, piece.x + x, piece.y + y, this.BOARD_WIDTH, this.BOARD_HEIGHT);
                 }
             }
         }
     }
     
-    drawBlock(x, y, color, context) {
-        // 绘制方块主体
+    drawBlock(x, y, color, context, boardX, boardY, boardWidth, boardHeight) {
+        const borderOffset = this.BLOCK_SIZE / 30;
+        const innerOffset = this.BLOCK_SIZE * (2/30);
+        const shadowOffset = this.BLOCK_SIZE * (3/30);
+        const highlightThickness = this.BLOCK_SIZE * (2/30);
+        
+        const isBottomLeftCornerBlock = (boardX === 0 && boardY === boardHeight - 1);
+        const isBottomRightCornerBlock = (boardX === boardWidth - 1 && boardY === boardHeight - 1);
+        
+        const cornerRadius = this.BLOCK_SIZE * (10/30); 
+
+        // Function to draw a rounded rectangle path with individual corner control
+        const drawRoundedRectPath = (ctx, x, y, width, height, radius, roundTopLeft, roundTopRight, roundBottomRight, roundBottomLeft) => {
+            ctx.beginPath();
+            
+            // Top-left corner
+            if (roundTopLeft) {
+                ctx.moveTo(x + radius, y);
+                ctx.arcTo(x, y, x, y + radius, radius);
+            } else {
+                ctx.moveTo(x, y);
+            }
+
+            // Top-right corner
+            if (roundTopRight) {
+                ctx.lineTo(x + width - radius, y);
+                ctx.arcTo(x + width, y, x + width, y + radius, radius);
+            } else {
+                ctx.lineTo(x + width, y);
+            }
+
+            // Bottom-right corner
+            if (roundBottomRight) {
+                ctx.lineTo(x + width, y + height - radius);
+                ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
+            } else {
+                ctx.lineTo(x + width, y + height);
+            }
+
+            // Bottom-left corner
+            if (roundBottomLeft) {
+                ctx.lineTo(x + radius, y + height);
+                ctx.arcTo(x, y + height, x, y + height - radius, radius);
+            } else {
+                ctx.lineTo(x, y + height);
+            }
+
+            ctx.closePath();
+        };
+
+        // Save context state before clipping
+        context.save();
+
+        // Draw the main block body (rounded or rectangular)
         context.fillStyle = color;
-        context.fillRect(x + 1, y + 1, this.BLOCK_SIZE - 2, this.BLOCK_SIZE - 2);
+        if (isBottomLeftCornerBlock) {
+            drawRoundedRectPath(context, x + borderOffset, y + borderOffset, this.BLOCK_SIZE - innerOffset, this.BLOCK_SIZE - innerOffset, cornerRadius, false, false, false, true); // Only bottom-left
+            context.fill();
+            context.clip();
+        } else if (isBottomRightCornerBlock) {
+            drawRoundedRectPath(context, x + borderOffset, y + borderOffset, this.BLOCK_SIZE - innerOffset, this.BLOCK_SIZE - innerOffset, cornerRadius, false, false, true, false); // Only bottom-right
+            context.fill();
+            context.clip();
+        } else {
+            context.fillRect(x + borderOffset, y + borderOffset, this.BLOCK_SIZE - innerOffset, this.BLOCK_SIZE - innerOffset);
+            context.beginPath();
+            context.rect(x + borderOffset, y + borderOffset, this.BLOCK_SIZE - innerOffset, this.BLOCK_SIZE - innerOffset);
+            context.clip();
+        }
         
-        // 绘制高光效果
-        context.fillStyle = this.lightenColor(color, 0.3);
-        context.fillRect(x + 1, y + 1, this.BLOCK_SIZE - 2, 4);
-        context.fillRect(x + 1, y + 1, 4, this.BLOCK_SIZE - 2);
+        // Draw highlight effects (now clipped to the block's shape)
+        context.fillStyle = this.lightenColor(color, 0.2);
+        context.fillRect(x + borderOffset, y + borderOffset, this.BLOCK_SIZE - innerOffset, highlightThickness);
+        context.fillRect(x + borderOffset, y + borderOffset, highlightThickness, this.BLOCK_SIZE - innerOffset);
         
-        // 绘制阴影效果
-        context.fillStyle = this.darkenColor(color, 0.3);
-        context.fillRect(x + this.BLOCK_SIZE - 5, y + 1, 4, this.BLOCK_SIZE - 2);
-        context.fillRect(x + 1, y + this.BLOCK_SIZE - 5, this.BLOCK_SIZE - 2, 4);
+        // Draw shadow effects (now clipped to the block's shape)
+        context.fillStyle = this.darkenColor(color, 0.2);
+        context.fillRect(x + this.BLOCK_SIZE - shadowOffset, y + borderOffset, highlightThickness, this.BLOCK_SIZE - innerOffset);
+        context.fillRect(x + borderOffset, y + this.BLOCK_SIZE - shadowOffset, this.BLOCK_SIZE - innerOffset, highlightThickness);
+
+        // Restore context state to remove clipping
+        context.restore();
     }
     
     drawNextPiece() {
@@ -853,7 +943,7 @@ class TetrisGame {
                 <h2>游戏结束!</h2>
                 <p>最终分数: ${this.score}</p>
                 <p>等级: ${this.level}</p>
-                <p>消除行数: ${this.lines}</p>
+                <p>Lines Cleared: ${this.lines}</p>
                 <button onclick="this.parentElement.remove(); tetrisGame.reset(); updateButtonStates();">重新开始</button>
             `;
             document.body.appendChild(gameOverDiv);
@@ -899,15 +989,15 @@ class TetrisGame {
         let className = '';
         switch (lines) {
             case 1:
-                message = `单行消除 +${score}`;
+                message = `Single Line +${score}`;
                 className = 'single';
                 break;
             case 2:
-                message = `双行消除 +${score}`;
+                message = `Double Line +${score}`;
                 className = 'double';
                 break;
             case 3:
-                message = `三行消除 +${score}`;
+                message = `Triple Line +${score}`;
                 className = 'triple';
                 break;
             case 4:
@@ -934,7 +1024,7 @@ class TetrisGame {
         
         document.body.appendChild(popup);
         
-        // 2秒后移除弹窗
+        // Remove popup after 2 seconds
         setTimeout(() => {
             if (popup.parentNode) {
                 popup.parentNode.removeChild(popup);

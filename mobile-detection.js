@@ -272,7 +272,28 @@ class MobileDetection {
         // 为移动端优化动画
         const style = document.createElement('style');
         style.textContent = `
-            @media (max-width: 768px) {\n                * {\n                    -webkit-transform: translateZ(0);\n                    transform: translateZ(0);\n                }\n                \n                .mobile-control-btn,\n                #tetris-canvas,\n                .game-controls button {\n                    will-change: transform, opacity;\n                }\n                \n                /* 减少复杂动画 */\n                .title-decoration {\n                    animation-duration: 10s;\n                }\n                \n                @keyframes brainPulse {\n                    0%, 100% { transform: scale(1); }\n                    50% { transform: scale(1.05); }\n                }\n            }
+            @media (max-width: 768px){
+                * {
+                    -webkit-transform: translateZ(0);
+                    transform: translateZ(0);
+                }
+                
+                .mobile-control-btn,
+                #tetris-canvas,
+                .game-controls button {
+                    will-change: transform, opacity;
+                }
+                
+                /* Reduce complex animations */
+                .title-decoration {
+                    animation-duration: 10s;
+                }
+                
+                @keyframes brainPulse {
+                    0%, 100% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                }
+            }
         `;
         document.head.appendChild(style);
     }
