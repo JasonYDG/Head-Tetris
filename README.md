@@ -17,7 +17,7 @@ An innovative Tetris game controlled by your head movements via webcam, complete
 
 ## 🎬 Game Demo
 
-[Watch Demo Video](Demo.mp4)
+[Watch Demo Video](https://github.com/JasonYDG/HeadTris/raw/main/Demo.mp4)
 
 
 
