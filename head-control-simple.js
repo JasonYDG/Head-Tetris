@@ -48,16 +48,16 @@ class HeadControl {
         
         // Nod acceleration drop detection (modified to nod action detection)
         this.nodStartTime = 0;
-        this.nodThreshold = 0.03; // Nod detection threshold
+        this.nodThreshold = 0.05; // Nod detection threshold (中等灵敏度)
         this.isNodding = false;
         this.lastNodTime = 0;
-        this.nodCooldown = 300; // Nod cooldown time, prevent repeated detection
+        this.nodCooldown = 200; // Nod cooldown time, prevent repeated detection (降低冷却时间)
         
         // Nod state tracking
         this.nosePositionHistory = [];
         this.maxNoseHistory = 10;
         this.dynamicBaseline = null;
-        this.baselineUpdateInterval = 30;
+        this.baselineUpdateInterval = 20; // 更快的基线更新，更好地适应头部位置
         this.frameCount = 0;
         this.lastNoseY = 0;
         this.nodDirection = 'none'; // 'down', 'up', 'none'
@@ -83,9 +83,9 @@ class HeadControl {
             
             this.faceMesh.setOptions({
                 maxNumFaces: 1,
-                refineLandmarks: true,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
+                refineLandmarks: false, // 关闭精细化地标检测以减少CPU使用
+                minDetectionConfidence: 0.4, // 降低检测置信度阈值
+                minTrackingConfidence: 0.4  // 降低跟踪置信度阈值
             });
             
             this.faceMesh.onResults(this.onResults.bind(this));
@@ -193,7 +193,7 @@ class HeadControl {
                 this.isFaceDetected = true; // Face detected
                 const landmarks = results.multiFaceLandmarks[0];
                 
-                // Draw face landmarks
+                // Draw face landmarks every frame
                 this.drawLandmarks(ctx, landmarks);
                 
                 // Calibrate baseline position
@@ -460,59 +460,46 @@ class HeadControl {
         const currentDirection = relativePosition > nodDownThreshold ? 'down' :
             relativePosition < nodUpThreshold ? 'up' : 'center';
 
-        // Nod/Head-up state machine
+        // 标准点头检测：只检测"向下-向上"的点头动作
         switch (this.nodPhase) {
             case 'waiting':
+                // 只有向下的动作才开始点头检测
                 if (currentDirection === 'down') {
                     this.nodPhase = 'going_down';
                     this.nodStartTime = now;
-                    console.log('Starting nod - downward phase');
-                } else if (currentDirection === 'up') {
-                    this.nodPhase = 'going_up';
-                    this.nodStartTime = now;
-                    console.log('Starting head-up - upward phase');
+                    console.log('开始点头 - 向下阶段');
                 }
+                // 忽略向上的动作，不触发检测
                 break;
 
             case 'going_down':
-                // If returning from downward phase, complete one "down-up" head shake
+                // 从向下阶段返回到中心或向上，完成一次标准点头
                 if (currentDirection === 'up' || currentDirection === 'center') {
-                    if (now - this.nodStartTime > 100) { // Debounce
+                    if (now - this.nodStartTime > 80 && now - this.nodStartTime < 1000) { 
+                        // 防抖动：80ms-1000ms之间的动作才有效（放宽时间窗口）
                         this.nodPhase = 'completed';
-                        console.log('Head shake (down-up) completed, triggering drop');
+                        console.log('标准点头完成 (向下-向上)，触发快速下降');
                         this.triggerNodDrop();
                     } else {
-                        this.nodPhase = 'waiting'; // Action too fast, reset
+                        this.nodPhase = 'waiting'; // 动作太快或太慢，重置
+                        console.log('点头动作时间不合适，重置');
                     }
                 } else if (now - this.nodStartTime > 1000) {
-                    // Timeout reset
+                    // 超时重置
                     this.nodPhase = 'waiting';
-                }
-                break;
-
-            case 'going_up':
-                // If returning from upward phase, complete one "up-down" head shake
-                if (currentDirection === 'down' || currentDirection === 'center') {
-                    if (now - this.nodStartTime > 100) { // Debounce
-                        this.nodPhase = 'completed';
-                        console.log('Head shake (up-down) completed, triggering drop');
-                        this.triggerNodDrop();
-                    } else {
-                        this.nodPhase = 'waiting'; // Action too fast, reset
-                    }
-                } else if (now - this.nodStartTime > 1000) {
-                    // Timeout reset
-                    this.nodPhase = 'waiting';
+                    console.log('点头检测超时，重置');
                 }
                 break;
 
             case 'completed':
-                // Wait for head to return to center position, prepare for next detection
+                // 等待头部回到中心位置，准备下次检测
                 if (currentDirection === 'center') {
                     this.nodPhase = 'waiting';
+                    console.log('头部回到中心，准备下次点头检测');
                 } else if (now - this.nodStartTime > 2000) {
-                    // Timeout force reset
+                    // 强制超时重置
                     this.nodPhase = 'waiting';
+                    console.log('点头完成状态超时，强制重置');
                 }
                 break;
         }
@@ -524,25 +511,31 @@ class HeadControl {
     triggerNodDrop() {
         const now = Date.now();
 
-        // Cooldown check, prevent too frequent
+        // 冷却时间检查，防止过于频繁触发
         if (now - this.lastNodTime < this.nodCooldown) {
+            console.log('点头触发在冷却时间内，忽略');
             return;
         }
 
         this.lastNodTime = now;
 
         if (this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
-            console.log('Nod/Head shake triggered, performing 3-cell drop');
+            console.log('点头触发快速下降，尝试下降5格');
 
-            for (let i = 0; i < 3; i++) {
-                // Attempt drop
+            // 增加快速下降的格数，让效果更明显
+            for (let i = 0; i < 5; i++) {
+                // 尝试下降一格
                 if (!this.tetrisGame.movePiece(0, 1)) {
-                    // If any drop fails, it means the piece has hit bottom
-                    console.log(`Drop ${i + 1} cell failed, piece hit bottom and locked immediately`);
-                    this.tetrisGame.dropTime = this.tetrisGame.dropInterval; // Force immediate lock
-                    break; // Stop attempting further drops
+                    // 如果下降失败，说明方块已经触底
+                    console.log(`第${i + 1}格下降失败，方块触底并立即锁定`);
+                    this.tetrisGame.dropTime = this.tetrisGame.dropInterval; // 强制立即锁定
+                    break; // 停止继续尝试下降
+                } else {
+                    console.log(`成功下降第${i + 1}格`);
                 }
             }
+        } else {
+            console.log('游戏未运行或无当前方块，忽略点头触发');
         }
     }
     
@@ -600,86 +593,48 @@ class HeadControl {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
         
-        // First draw face fill for beautification
-        this.drawFaceFill(ctx, landmarks, canvasWidth, canvasHeight);
+        // 提高面部亮度和对比度
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'; // 提高亮度50%
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
         
-        // Draw beautified face contour
+        // 增加对比度以显示更多面部细节
+        ctx.globalCompositeOperation = 'overlay';
+        ctx.fillStyle = 'rgba(128, 128, 128, 0.15)'; // 增加对比度
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        
+        ctx.globalCompositeOperation = 'source-over'; // 恢复默认混合模式
+        
+        // Draw simplified face contour
         this.drawBeautifiedFaceContour(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // Draw beautified eyes
-        this.drawBeautifiedEyes(ctx, landmarks, canvasWidth, canvasHeight);
-        
-        // Draw beautified mouth
+        // Draw only mouth outline (needed for mouth open detection)
         this.drawBeautifiedMouth(ctx, landmarks, canvasWidth, canvasHeight);
         
-        // Draw beautified nose
-        this.drawBeautifiedNose(ctx, landmarks, canvasWidth, canvasHeight);
-        
-        // Draw beautified eyebrows
-        this.drawBeautifiedEyebrows(ctx, landmarks, canvasWidth, canvasHeight);
-        
-        // Add face highlight effect
-        this.drawFaceHighlights(ctx, landmarks, canvasWidth, canvasHeight);
+        // Skip nose, eyes and eyebrows to reduce CPU usage
+        // this.drawBeautifiedNose(ctx, landmarks, canvasWidth, canvasHeight);
+        // this.drawBeautifiedEyes(ctx, landmarks, canvasWidth, canvasHeight);
+        // this.drawBeautifiedEyebrows(ctx, landmarks, canvasWidth, canvasHeight);
+        // this.drawFaceHighlights(ctx, landmarks, canvasWidth, canvasHeight);
     }
     
-    // Draw natural face highlight effect
+    // Simplified face highlight effect
     drawFaceHighlights(ctx, landmarks, width, height) {
-        // Subtle nose bridge highlight
+        // 简化的鼻子高光，减少复杂计算
         const noseHighlight = landmarks[9];
         if (noseHighlight) {
             const x = noseHighlight.x * width;
             const y = noseHighlight.y * height;
             
-            const gradient = ctx.createRadialGradient(x, y, 0, x, y, 4);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
-            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.15)');
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            
-            ctx.fillStyle = gradient;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.beginPath();
-            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
             ctx.fill();
         }
-        
-        // Natural blush on cheeks
-        const leftCheek = landmarks[116];
-        const rightCheek = landmarks[345];
-        
-        if (leftCheek) {
-            this.drawNaturalBlush(ctx, leftCheek.x * width, leftCheek.y * height);
-        }
-        if (rightCheek) {
-            this.drawNaturalBlush(ctx, rightCheek.x * width, rightCheek.y * height);
-        }
+        // 移除腮红等复杂效果以减少CPU使用
     }
     
-    // Draw natural blush
-    drawNaturalBlush(ctx, x, y) {
-        // Main blush gradient - natural pink
-        const blushGradient = ctx.createRadialGradient(x, y, 0, x, y, 12);
-        blushGradient.addColorStop(0, 'rgba(255, 182, 193, 0.2)'); // Light pink center
-        blushGradient.addColorStop(0.4, 'rgba(255, 192, 203, 0.15)'); // Light pink
-        blushGradient.addColorStop(0.7, 'rgba(255, 218, 185, 0.1)'); // Peach color
-        blushGradient.addColorStop(1, 'rgba(255, 228, 225, 0)');
-        
-        ctx.fillStyle = blushGradient;
-        ctx.beginPath();
-        ctx.arc(x, y, 12, 0, 2 * Math.PI);
-        ctx.fill();
-    }
-    
-    // Draw cheek highlight
-    drawCheekHighlight(ctx, x, y) {
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
-        gradient.addColorStop(0, 'rgba(255, 182, 193, 0.2)'); // Light pink
-        gradient.addColorStop(0.5, 'rgba(255, 192, 203, 0.1)');
-        gradient.addColorStop(1, 'rgba(255, 192, 203, 0)');
-        
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(x, y, 15, 0, 2 * Math.PI);
-        ctx.fill();
-    }
+
     
     // Draw calibration progress
     drawCalibrationProgress(ctx) {
@@ -814,7 +769,7 @@ class HeadControl {
         ctx.fillText(tiltIcon, iconX, iconY);
         iconX -= spacing;
         
-        // Nod status icon
+        // 点头状态图标
         if (this.nodPhase === 'going_down') {
             ctx.fillText('↓', iconX, iconY);
             iconX -= spacing;
@@ -846,66 +801,24 @@ class HeadControl {
         }
     }
     
-    // Draw natural face fill (remove excessive whitening)
+    // Simple brightness adjustment instead of face whitening
     drawFaceFill(ctx, landmarks, width, height) {
-        const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
-        
-        ctx.beginPath();
-        for (let i = 0; i < faceOval.length; i++) {
-            const point = landmarks[faceOval[i]];
-            if (point) {
-                const x = point.x * width;
-                const y = point.y * height;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-        }
-        ctx.closePath();
-        
-        // Natural skin tone, referencing Rei Ayanami's actual skin color
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.min(width, height) / 2);
-        gradient.addColorStop(0, 'rgba(245, 235, 225, 0.4)'); // Natural skin tone center
-        gradient.addColorStop(0.4, 'rgba(240, 228, 218, 0.3)'); // Warm skin tone
-        gradient.addColorStop(0.7, 'rgba(235, 220, 210, 0.2)'); // Natural transition
-        gradient.addColorStop(1, 'rgba(230, 215, 205, 0.1)'); // Soft edge
-        
-        ctx.fillStyle = gradient;
-        ctx.fill();
+        // 简单的亮度提升，不进行复杂的面部美白
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; // 轻微提升亮度
+        ctx.fillRect(0, 0, width, height);
+        ctx.globalCompositeOperation = 'source-over'; // 恢复默认混合模式
     }
 
     // Draw natural and delicate face contour (referencing Rei Ayanami style)
     drawBeautifiedFaceContour(ctx, landmarks, width, height) {
+        // 简化的面部轮廓，只绘制基本边框
         const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
         
-        // Main contour line - natural skin tone boundary
-        ctx.strokeStyle = 'rgba(160, 140, 120, 0.5)'; // Natural skin tone contour
-        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = 'rgba(78, 205, 196, 0.6)'; // 简单的青色轮廓
+        ctx.lineWidth = 1.5;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.beginPath();
-        for (let i = 0; i < faceOval.length; i++) {
-            const point = landmarks[faceOval[i]];
-            if (point) {
-                const x = point.x * width;
-                const y = point.y * height;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-        }
-        ctx.closePath();
-        ctx.stroke();
-        
-        // Inner delicate lines - soft shadow definition
-        ctx.strokeStyle = 'rgba(140, 120, 100, 0.3)'; // Light brown shadow
-        ctx.lineWidth = 0.8;
         ctx.beginPath();
         for (let i = 0; i < faceOval.length; i++) {
             const point = landmarks[faceOval[i]];
@@ -1039,112 +952,82 @@ class HeadControl {
     
     // Draw beautified mouth
     drawBeautifiedMouth(ctx, landmarks, width, height) {
-        // Mouth outer contour
-        const mouthOuter = [61, 84, 17, 314, 405, 320, 307, 375, 321, 308, 324, 318];
-        // Mouth inner contour
-        const mouthInner = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324];
+        // 使用与游戏检测相同的关键点
+        const leftCorner = landmarks[61];   // 左嘴角
+        const rightCorner = landmarks[291]; // 右嘴角
+        const upperLip = landmarks[13];     // 上唇中心（与游戏检测一致）
+        const lowerLip = landmarks[14];     // 下唇中心（与游戏检测一致）
         
-        // Draw lip fill
-        ctx.beginPath();
-        for (let i = 0; i < mouthOuter.length; i++) {
-            const point = landmarks[mouthOuter[i]];
-            if (point) {
-                const x = point.x * width;
-                const y = point.y * height;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
+        if (leftCorner && rightCorner && upperLip && lowerLip && this.baselineMouth) {
+            // 计算嘴部中心点
+            const centerX = ((leftCorner.x + rightCorner.x) / 2) * width;
+            const centerY = ((upperLip.y + lowerLip.y) / 2) * height;
+            
+            // 计算嘴部宽度
+            const mouthWidth = Math.abs(rightCorner.x - leftCorner.x) * width;
+            
+            // 使用与游戏检测完全相同的逻辑判断嘴部是否张开
+            const mouthDistance = Math.abs(upperLip.y - lowerLip.y);
+            const mouthOpen = mouthDistance - this.baselineMouth.distance;
+            const isMouthOpen = mouthOpen > this.mouthOpenThreshold;
+            
+            // 设置绘制样式
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)'; // 红色轮廓
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            
+            if (!isMouthOpen) {
+                // 嘴部闭合时：绘制贴合下嘴唇的轻微弧线
+                const smileWidth = mouthWidth * 0.7; // 缩短长度到70%
+                const smileHeight = 1; // 降低弧度高度到1像素
+                const lowerLipY = lowerLip.y * height; // 贴合下嘴唇位置
+                
+                ctx.beginPath();
+                // 绘制轻微弧线：贴合下嘴唇，只是稍微弯曲
+                ctx.moveTo(centerX - smileWidth / 2, lowerLipY);
+                ctx.quadraticCurveTo(centerX, lowerLipY + smileHeight, centerX + smileWidth / 2, lowerLipY);
+                ctx.stroke();
+                
+                // 在嘴角添加小点，位置也调整到下嘴唇
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+                ctx.beginPath();
+                ctx.arc(centerX - smileWidth / 2, lowerLipY, 1, 0, 2 * Math.PI);
+                ctx.arc(centerX + smileWidth / 2, lowerLipY, 1, 0, 2 * Math.PI);
+                ctx.fill();
+            } else {
+                // 嘴部张开时：绘制椭圆
+                const mouthHeight = Math.abs(lowerLip.y - upperLip.y) * height;
+                
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY, mouthWidth / 2, mouthHeight / 2, 0, 0, 2 * Math.PI);
+                ctx.stroke();
+                
+                // 如果嘴张得很大，添加内部轮廓
+                if (mouthOpen > this.mouthOpenThreshold * 2) {
+                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.ellipse(centerX, centerY, (mouthWidth / 2) * 0.7, (mouthHeight / 2) * 0.7, 0, 0, 2 * Math.PI);
+                    ctx.stroke();
                 }
             }
-        }
-        ctx.closePath();
-        
-        // Rei Ayanami style delicate lip gradient
-        const mouthCenter = landmarks[13];
-        if (mouthCenter) {
-            const centerX = mouthCenter.x * width;
-            const centerY = mouthCenter.y * height;
+        } else if (leftCorner && rightCorner && upperLip && lowerLip) {
+            // 如果还没有基线，绘制默认的轻微弧线
+            const centerX = ((leftCorner.x + rightCorner.x) / 2) * width;
+            const mouthWidth = Math.abs(rightCorner.x - leftCorner.x) * width;
+            const smileWidth = mouthWidth * 0.7;
+            const smileHeight = 1;
+            const lowerLipY = lowerLip.y * height; // 贴合下嘴唇位置
             
-            // Main lip gradient - more delicate pink
-            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 18);
-            gradient.addColorStop(0, 'rgba(255, 192, 203, 0.8)'); // Light pink center
-            gradient.addColorStop(0.4, 'rgba(255, 182, 193, 0.6)'); // Light pink
-            gradient.addColorStop(0.7, 'rgba(255, 160, 180, 0.4)'); // Medium pink
-            gradient.addColorStop(1, 'rgba(255, 140, 160, 0.2)'); // Edge pink
-            
-            ctx.fillStyle = gradient;
-            ctx.fill();
-            
-            // Lip highlight - anime style gloss
-            const highlightGradient = ctx.createLinearGradient(centerX - 10, centerY - 3, centerX + 10, centerY + 3);
-            highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-            highlightGradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.4)');
-            highlightGradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.4)');
-            highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            
-            ctx.fillStyle = highlightGradient;
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.lineCap = 'round';
             ctx.beginPath();
-            ctx.ellipse(centerX, centerY - 2, 8, 2, 0, 0, 2 * Math.PI);
-            ctx.fill();
+            // 校准期间也显示贴合下嘴唇的轻微弧线
+            ctx.moveTo(centerX - smileWidth / 2, lowerLipY);
+            ctx.quadraticCurveTo(centerX, lowerLipY + smileHeight, centerX + smileWidth / 2, lowerLipY);
+            ctx.stroke();
         }
-        
-        // Outer contour - soft halo
-        ctx.strokeStyle = 'rgba(255, 107, 107, 0.4)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        for (let i = 0; i < mouthOuter.length; i++) {
-            const point = landmarks[mouthOuter[i]];
-            if (point) {
-                const x = point.x * width;
-                const y = point.y * height;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-        }
-        ctx.closePath();
-        ctx.stroke();
-        
-        // Inner contour - clear lines
-        ctx.strokeStyle = '#ff6b6b';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        for (let i = 0; i < mouthOuter.length; i++) {
-            const point = landmarks[mouthOuter[i]];
-            if (point) {
-                const x = point.x * width;
-                const y = point.y * height;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-        }
-        ctx.closePath();
-        ctx.stroke();
-        
-        // Lip demarcation line
-        ctx.strokeStyle = 'rgba(255, 138, 138, 0.8)';
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        for (let i = 0; i < mouthInner.length; i++) {
-            const point = landmarks[mouthInner[i]];
-            if (point) {
-                const x = point.x * width;
-                const y = point.y * height;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            }
-        }
-        ctx.closePath();
-        ctx.stroke();
     }
     
     // Draw beautified nose
@@ -1350,8 +1233,10 @@ class HeadControl {
         items.push({ text: `${tiltIcon} Tilt`, color: tiltColor });
 
         // 2. Nod Status
-        if (this.nodPhase === 'going_down' || this.nodPhase === 'completed') {
-            items.push({ text: '↓ Nod', color: '#ffcc00' });
+        if (this.nodPhase === 'going_down') {
+            items.push({ text: '↓ Nodding', color: '#ffcc00' });
+        } else if (this.nodPhase === 'completed') {
+            items.push({ text: '⚡ Fast Drop', color: '#ff6b6b' });
         }
 
         // 3. Mouth Status
@@ -1404,6 +1289,21 @@ class HeadControl {
         this.headTiltThreshold = tiltThreshold;
         this.nodThreshold = nodThreshold;
         this.mouthOpenThreshold = mouthThreshold;
+        
+        // 根据倾斜灵敏度调整移动速度
+        // 灵敏度越高(数值越小)，移动越快
+        const baseContinuousInterval = 150;
+        const baseFastInterval = 90;
+        
+        // 灵敏度范围 0.05-0.30，反向映射到速度
+        const sensitivityFactor = (0.30 - tiltThreshold) / (0.30 - 0.05); // 0-1范围
+        
+        // 灵敏度高时速度快，灵敏度低时速度慢
+        this.continuousMoveInterval = Math.max(50, baseContinuousInterval - (sensitivityFactor * 100));
+        this.fastMoveInterval = Math.max(30, baseFastInterval - (sensitivityFactor * 60));
+        
+        console.log(`灵敏度更新: 倾斜=${tiltThreshold}, 点头=${nodThreshold}, 张嘴=${mouthThreshold}`);
+        console.log(`移动速度: 连续=${this.continuousMoveInterval}ms, 快速=${this.fastMoveInterval}ms`);
     }
     
     stop() {

@@ -5,27 +5,33 @@
 }
 
 html {
-    font-size: 16px; /* Base font size for rem units */
+    font-size: 16px;
+    /* Base font size for rem units */
 }
 
 body {
     font-family: 'Arial', sans-serif;
     background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #667eea 100%);
     color: white;
-    min-height: 100vh; /* Ensure full viewport height */
+    min-height: 100vh;
+    /* Ensure full viewport height */
     overflow-x: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1rem; /* Responsive padding */
+    padding: 1rem;
+    /* Responsive padding */
 }
 
 .game-container {
-    max-width: 1200px; /* Max width for larger screens */
-    width: 100%; /* Take full width on smaller screens */
+    max-width: 1200px;
+    /* Max width for larger screens */
+    width: 100%;
+    /* Take full width on smaller screens */
     margin: 0 auto;
-    padding: 1.5rem; /* Responsive padding */
+    padding: 1.5rem;
+    /* Responsive padding */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -49,7 +55,8 @@ body {
 }
 
 .main-title {
-    font-size: clamp(2.5rem, 6vw, 4.5rem); /* Responsive font size */
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    /* Responsive font size */
     font-weight: 900;
     margin: 0;
     display: flex;
@@ -61,7 +68,8 @@ body {
 }
 
 .subtitle {
-    font-size: clamp(0.9rem, 2vw, 1.2rem); /* Responsive font size */
+    font-size: clamp(0.9rem, 2vw, 1.2rem);
+    /* Responsive font size */
     color: rgba(255, 255, 255, 0.9);
     margin-top: 0.8rem;
     letter-spacing: 0.1rem;
@@ -71,13 +79,14 @@ body {
     display: flex;
     justify-content: center;
     gap: 1.5rem;
-    font-size: clamp(1rem, 2.5vw, 1.5rem); /* Responsive font size */
+    font-size: clamp(1rem, 2.5vw, 1.5rem);
+    /* Responsive font size */
     font-weight: bold;
     width: 100%;
     flex-wrap: wrap;
 }
 
-.score-board > div {
+.score-board>div {
     background: rgba(255, 255, 255, 0.1);
     padding: 0.5rem 1rem;
     border-radius: 0.8rem;
@@ -88,7 +97,8 @@ body {
 /* --- Main Layout --- */
 .main-game {
     display: flex;
-    flex-wrap: wrap; /* Allow items to wrap */
+    flex-wrap: wrap;
+    /* Allow items to wrap */
     gap: 1.5rem;
     justify-content: center;
     align-items: flex-start;
@@ -101,8 +111,10 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 1rem;
-    flex: 1 1 250px; /* Flexible width, min 250px */
-    max-width: 300px; /* Max width for camera section */
+    flex: 1 1 250px;
+    /* Flexible width, min 250px */
+    max-width: 300px;
+    /* Max width for camera section */
 }
 
 #input_video {
@@ -112,13 +124,15 @@ body {
     border-radius: 1rem;
     border: 0.15rem solid rgba(255, 255, 255, 0.3);
     background: rgba(0, 0, 0, 0.8);
-    display: none; /* Hidden by default, controlled by JS */
+    display: none;
+    /* Hidden by default, controlled by JS */
 }
 
 #output_canvas {
     width: 100%;
     height: auto;
-    aspect-ratio: 4 / 3; /* Maintain 4:3 aspect ratio */
+    aspect-ratio: 4 / 3;
+    /* Maintain 4:3 aspect ratio */
     border-radius: 1rem;
     border: 0.15rem solid rgba(255, 255, 255, 0.3);
     background: rgba(0, 0, 0, 0.8);
@@ -128,7 +142,8 @@ body {
     background: rgba(255, 255, 255, 0.1);
     padding: 1rem;
     border-radius: 1rem;
-    font-size: clamp(0.8rem, 1.5vw, 1.1rem); /* Responsive font size */
+    font-size: clamp(0.8rem, 1.5vw, 1.1rem);
+    /* Responsive font size */
     width: 100%;
 }
 
@@ -164,7 +179,8 @@ body {
     border: 0.1rem solid rgba(255, 255, 255, 0.2);
     border-radius: 0.5rem;
     background: rgba(0, 0, 0, 0.8);
-    width: 6rem; /* Fixed size for next piece */
+    width: 6rem;
+    /* Fixed size for next piece */
     height: 6rem;
 }
 
@@ -173,8 +189,10 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 1rem;
-    flex: 1 1 300px; /* Flexible width, min 300px */
-    max-width: 350px; /* Max width for game board */
+    flex: 1 1 300px;
+    /* Flexible width, min 300px */
+    max-width: 350px;
+    /* Max width for game board */
     min-width: 200px;
 }
 
@@ -185,39 +203,188 @@ body {
     box-shadow: 0 0 2rem rgba(0, 0, 0, 0.5);
     width: 100%;
     height: auto;
-    aspect-ratio: 1 / 2; /* Maintain 1:2 aspect ratio (Tetris board) */
+    aspect-ratio: 1 / 2;
+    /* Maintain 1:2 aspect ratio (Tetris board) */
 }
 
 .right-panel {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    flex: 1 1 250px; /* Flexible width, min 250px */
-    max-width: 300px; /* Max width for right panel */
+    flex: 1 1 280px;
+    /* Increased min width for better content display */
+    max-width: 320px;
+    /* Increased max width for right panel */
+    min-height: 600px;
+    /* Ensure minimum height */
 }
 
-.leaderboard, .score-rules {
+.leaderboard,
+.score-rules,
+.sensitivity-controls {
     background: rgba(255, 255, 255, 0.1);
     padding: 1rem;
     border-radius: 1rem;
     backdrop-filter: blur(10px);
     border: 0.1rem solid rgba(255, 255, 255, 0.2);
+    display: block;
+    /* Always show these sections */
 }
 
 .leaderboard-entry {
     display: flex;
     justify-content: space-between;
-    padding: 0.4rem 0.6rem;
-    margin: 0.3rem 0;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 0.4rem;
-    font-size: clamp(0.7rem, 1.2vw, 0.9rem);
+    align-items: center;
+    padding: 0.5rem 0.8rem;
+    margin: 0.4rem 0;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 0.5rem;
+    font-size: clamp(0.8rem, 1.4vw, 1rem);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.2s ease;
 }
 
-.leaderboard h3, .score-rules h4 {
+.leaderboard-entry:hover {
+    background: rgba(78, 205, 196, 0.2);
+    border-color: rgba(78, 205, 196, 0.3);
+}
+
+.leaderboard-entry .rank {
+    font-weight: bold;
+    color: #4ecdc4;
+    min-width: 2rem;
+    text-align: center;
+}
+
+.leaderboard-entry .player {
+    flex: 1;
+    text-align: left;
+    margin: 0 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.leaderboard-entry .score {
+    font-weight: bold;
+    color: #ffcc00;
+    min-width: 4rem;
+    text-align: right;
+}
+
+/* Special styling for top 3 positions */
+.leaderboard-entry:nth-child(1) .rank {
+    color: #ffd700;
+    /* Gold */
+    text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+}
+
+.leaderboard-entry:nth-child(2) .rank {
+    color: #c0c0c0;
+    /* Silver */
+    text-shadow: 0 0 5px rgba(192, 192, 192, 0.5);
+}
+
+.leaderboard-entry:nth-child(3) .rank {
+    color: #cd7f32;
+    /* Bronze */
+    text-shadow: 0 0 5px rgba(205, 127, 50, 0.5);
+}
+
+.leaderboard-entry:nth-child(1) {
+    background: linear-gradient(90deg, rgba(255, 215, 0, 0.1), rgba(0, 0, 0, 0.3));
+    border-color: rgba(255, 215, 0, 0.3);
+}
+
+.leaderboard-entry:nth-child(2) {
+    background: linear-gradient(90deg, rgba(192, 192, 192, 0.1), rgba(0, 0, 0, 0.3));
+    border-color: rgba(192, 192, 192, 0.3);
+}
+
+.leaderboard-entry:nth-child(3) {
+    background: linear-gradient(90deg, rgba(205, 127, 50, 0.1), rgba(0, 0, 0, 0.3));
+    border-color: rgba(205, 127, 50, 0.3);
+}
+
+.leaderboard h3,
+.score-rules h4,
+.sensitivity-controls h3 {
     font-size: clamp(1.2rem, 2.5vw, 1.5rem);
     margin-bottom: 1rem;
     color: #4ecdc4;
+    text-align: center;
+}
+
+/* Sensitivity Controls Styles */
+.sensitivity-controls {
+    margin-top: 1rem;
+}
+
+.sensitivity-item {
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.sensitivity-item label {
+    font-size: clamp(0.9rem, 1.6vw, 1.1rem);
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 500;
+}
+
+.sensitivity-item input[type="range"] {
+    width: 100%;
+    height: 0.5rem;
+    border-radius: 0.25rem;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.sensitivity-item input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 50%;
+    background: #4ecdc4;
+    cursor: pointer;
+    box-shadow: 0 0 0.5rem rgba(78, 205, 196, 0.5);
+    transition: all 0.2s ease;
+}
+
+.sensitivity-item input[type="range"]::-webkit-slider-thumb:hover {
+    background: #45b7d1;
+    transform: scale(1.1);
+}
+
+.sensitivity-item input[type="range"]::-moz-range-thumb {
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 50%;
+    background: #4ecdc4;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 0.5rem rgba(78, 205, 196, 0.5);
+}
+
+.sensitivity-value-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.3rem;
+}
+
+.sensitivity-value {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.3rem;
+    font-size: 0.9rem;
+    color: #4ecdc4;
+    font-weight: bold;
+    min-width: 3rem;
     text-align: center;
 }
 
@@ -256,7 +423,8 @@ body {
 
 /* Mobile-specific controls */
 .mobile-controls {
-    display: flex; /* Show by default, hide with media query for desktop */
+    display: flex;
+    /* Show by default, hide with media query for desktop */
     justify-content: center;
     gap: 1rem;
     margin-top: 1.5rem;
@@ -269,13 +437,15 @@ body {
     font-size: clamp(1.5rem, 4vw, 2rem);
     font-weight: bold;
     border: none;
-    border-radius: 50%; /* Circular buttons */
+    border-radius: 50%;
+    /* Circular buttons */
     cursor: pointer;
     transition: all 0.2s ease;
     background: linear-gradient(45deg, #4ecdc4, #45b7d1);
     color: white;
     box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.3);
-    width: 4rem; /* Fixed size for mobile buttons */
+    width: 4rem;
+    /* Fixed size for mobile buttons */
     height: 4rem;
     display: flex;
     align-items: center;
@@ -296,8 +466,10 @@ body {
 }
 
 /* Other styles */
-#input_video, .debug-info, .sensitivity-controls {
-    display: none; /* Hidden by default, controlled by JS */
+#input_video,
+.debug-info {
+    display: none;
+    /* Hidden by default, controlled by JS */
 }
 
 .modal {
@@ -309,7 +481,8 @@ body {
     width: 100%;
     height: 100%;
     overflow: auto;
-    background-color: rgba(0,0,0,0.8); /* Darker overlay */
+    background-color: rgba(0, 0, 0, 0.8);
+    /* Darker overlay */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -321,9 +494,10 @@ body {
     padding: 1.5rem;
     border: 0.05rem solid rgba(255, 255, 255, 0.2);
     width: 90%;
-    max-width: 30rem; /* Responsive max-width */
+    max-width: 30rem;
+    /* Responsive max-width */
     border-radius: 1rem;
-    box-shadow: 0 0.25rem 1.25rem rgba(0,0,0,0.4);
+    box-shadow: 0 0.25rem 1.25rem rgba(0, 0, 0, 0.4);
 }
 
 .modal-header h2 {
@@ -370,32 +544,68 @@ body {
 /* For screens smaller than 768px (typical mobile portrait) */
 @media (max-width: 768px) {
     html {
-        font-size: 14px; /* Smaller base font for smaller screens */
+        font-size: 14px;
+        /* Smaller base font for smaller screens */
+    }
+
+    body {
+        padding: 0.5rem;
     }
 
     .game-container {
         padding: 1rem;
+        max-width: 100%;
     }
 
     .main-game {
-        flex-direction: column; /* Stack elements vertically */
+        flex-direction: column;
+        /* Stack elements vertically */
         align-items: center;
+        gap: 1rem;
     }
 
-    .camera-section, .game-board, .right-panel {
-        max-width: 90%; /* Take more width */
-        flex: 1 1 auto; /* Allow full width */
+    .camera-section,
+    .game-board,
+    .right-panel {
+        max-width: 100%;
+        /* Take full width */
+        flex: 1 1 auto;
+        /* Allow full width */
+        width: 100%;
     }
 
-    .game-controls, .mobile-controls {
-        flex-direction: row; /* Keep buttons in a row */
+    .right-panel {
+        min-height: auto;
+        /* Remove fixed height on mobile */
+        order: 3;
+        /* Ensure right panel appears last */
+    }
+
+    .game-board {
+        order: 1;
+        /* Game board appears first */
+    }
+
+    .camera-section {
+        order: 2;
+        /* Camera section appears second */
+    }
+
+    .game-controls,
+    .mobile-controls {
+        flex-direction: row;
+        /* Keep buttons in a row */
         justify-content: space-around;
         gap: 0.5rem;
+        width: 100%;
     }
 
-    .game-controls button, .mobile-control-btn {
-        width: auto; /* Auto width for buttons */
-        flex-grow: 1; /* Allow buttons to grow */
+    .game-controls button,
+    .mobile-control-btn {
+        width: auto;
+        /* Auto width for buttons */
+        flex-grow: 1;
+        /* Allow buttons to grow */
     }
 
     .mobile-control-btn {
@@ -403,12 +613,26 @@ body {
         height: 3.5rem;
         font-size: 1.2rem;
     }
+
+    /* Adjust sensitivity controls for mobile */
+    .sensitivity-controls {
+        margin-top: 0.5rem;
+    }
+
+    .sensitivity-item {
+        margin-bottom: 0.8rem;
+    }
 }
 
 /* For screens smaller than 480px (very small mobile) */
 @media (max-width: 480px) {
     html {
-        font-size: 12px; /* Even smaller base font */
+        font-size: 12px;
+        /* Even smaller base font */
+    }
+
+    body {
+        padding: 0.25rem;
     }
 
     .game-container {
@@ -416,22 +640,96 @@ body {
     }
 
     .main-title {
-        font-size: clamp(2rem, 8vw, 3rem);
+        font-size: clamp(1.8rem, 8vw, 2.8rem);
     }
 
     .subtitle {
-        font-size: clamp(0.8rem, 3vw, 1rem);
+        font-size: clamp(0.7rem, 3vw, 0.9rem);
     }
 
     .score-board {
-        font-size: clamp(0.9rem, 3vw, 1.2rem);
-        gap: 0.8rem;
+        font-size: clamp(0.8rem, 3vw, 1.1rem);
+        gap: 0.5rem;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .score-board>div {
+        padding: 0.4rem 0.8rem;
+        margin: 0.2rem 0;
     }
 
     .mobile-control-btn {
         width: 3rem;
         height: 3rem;
         font-size: 1rem;
+    }
+
+    .leaderboard-entry {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+    }
+
+    .sensitivity-item label {
+        font-size: 0.9rem;
+    }
+}
+
+/* Desktop and large screen optimizations */
+@media (min-width: 1200px) {
+    .game-container {
+        max-width: 1400px;
+        padding: 2rem;
+    }
+
+    .main-game {
+        gap: 2rem;
+    }
+
+    .right-panel {
+        max-width: 350px;
+        min-height: 700px;
+    }
+
+    .camera-section {
+        max-width: 350px;
+    }
+
+    .game-board {
+        max-width: 400px;
+    }
+}
+
+/* Medium desktop screens */
+@media (min-width: 769px) and (max-width: 1199px) {
+    .game-container {
+        max-width: 1100px;
+        padding: 1.8rem;
+    }
+
+    .main-game {
+        gap: 1.8rem;
+    }
+
+    .right-panel {
+        max-width: 320px;
+        min-height: 650px;
+    }
+}
+
+/* Tablet landscape */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
+    .main-game {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .camera-section,
+    .game-board,
+    .right-panel {
+        flex: 1 1 300px;
+        max-width: 32%;
     }
 }
 
@@ -449,21 +747,113 @@ body {
     }
 }
 
+/* Ultra-wide screen support */
+@media (min-width: 1600px) {
+    .game-container {
+        max-width: 1600px;
+        padding: 2.5rem;
+    }
+
+    .main-game {
+        gap: 2.5rem;
+    }
+
+    .right-panel {
+        max-width: 380px;
+        min-height: 750px;
+    }
+
+    .camera-section {
+        max-width: 380px;
+    }
+
+    .game-board {
+        max-width: 450px;
+    }
+}
+
+/* High DPI screen adjustments */
+@media (-webkit-min-device-pixel-ratio: 2),
+(min-resolution: 192dpi) {
+
+    #tetris-canvas,
+    #next-canvas,
+    #output_canvas {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+}
+
+/* Landscape mobile optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+    .game-container {
+        padding: 0.5rem;
+    }
+
+    .main-game {
+        flex-direction: row;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .camera-section,
+    .game-board,
+    .right-panel {
+        flex: 1 1 30%;
+        max-width: 32%;
+    }
+
+    .header {
+        margin-bottom: 1rem;
+    }
+
+    .main-title {
+        font-size: clamp(1.5rem, 4vw, 2.5rem);
+    }
+
+    .subtitle {
+        font-size: clamp(0.7rem, 1.5vw, 1rem);
+    }
+
+    .score-board {
+        font-size: clamp(0.8rem, 2vw, 1.2rem);
+        gap: 1rem;
+    }
+}
+
 /* Keyframe animations */
 @keyframes newRecordGlow {
-    0% { box-shadow: 0 0 10px #4ecdc4; }
-    50% { box-shadow: 0 0 30px #4ecdc4, 0 0 60px #4ecdc4; }
-    100% { box-shadow: 0 0 10px #4ecdc4; }
+    0% {
+        box-shadow: 0 0 10px #4ecdc4;
+    }
+
+    50% {
+        box-shadow: 0 0 30px #4ecdc4, 0 0 60px #4ecdc4;
+    }
+
+    100% {
+        box-shadow: 0 0 10px #4ecdc4;
+    }
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes fadeOut {
-    from { opacity: 1; }
-    to { opacity: 0; }
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
 }
 
 @keyframes confettiFall {
@@ -471,11 +861,13 @@ body {
         transform: translate(var(--tx), var(--ty)) rotate(0deg);
         opacity: 1;
     }
+
     100% {
         transform: translate(var(--tx), calc(var(--ty) + 200px)) rotate(var(--rot));
         opacity: 0;
     }
 }
+
 /* Auto-restart countdown styles */
 .auto-restart-info {
     text-align: center;
@@ -495,10 +887,13 @@ body {
 }
 
 @keyframes countdownPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
         transform: scale(1);
     }
+
     50% {
         opacity: 0.7;
         transform: scale(1.05);
@@ -526,7 +921,9 @@ body {
 
 #start-btn:active {
     transform: translateY(0);
-}/* 背景音乐
+}
+
+/* 背景音乐
 Button Styles */
 /* BGM button styles */
 button[onclick="toggleBGM()"] {
@@ -570,9 +967,12 @@ button[onclick="toggleBGM()"].music-disabled {
 }
 
 @keyframes musicPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: scale(1);
     }
+
     50% {
         transform: scale(1.1);
     }

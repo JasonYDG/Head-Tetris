@@ -273,6 +273,13 @@ document.addEventListener('DOMContentLoaded', function () {
             setTimeout(() => {
                 initBGMButtonState();
             }, 500);
+            
+            // 确保灵敏度设置正确初始化
+            setTimeout(() => {
+                if (headControl) {
+                    headControl.updateSensitivity(0.15, 0.05, 0.02);
+                }
+            }, 1000);
         }, 1000);
 
     } catch (error) {
@@ -440,6 +447,9 @@ function setupEventListeners() {
             }
         }
 
+        // 重置灵敏度设置为默认值
+        resetSensitivityToDefault();
+        
         // 重置并开始新游戏
         tetrisGame.reset();
         startGameAutomatically();
@@ -479,6 +489,9 @@ function setupEventListeners() {
             console.log('摄像头控制已停止');
         }
     });
+
+    // 设置灵敏度控制
+    setupSensitivityControls();
 }
 
 function setupKeyboardControls() {
@@ -829,21 +842,34 @@ function setupSensitivityControls() {
         return;
     }
 
+    // 初始化显示值（每次游戏重新开始时重置为默认值）
+    tiltSlider.value = "0.15";
+    nodSlider.value = "50"; // 对应0.05的滑杆值（中等灵敏度）
+    mouthSlider.value = "0.02";
+    
+    if (tiltValue) tiltValue.textContent = tiltSlider.value;
+    if (nodValue) nodValue.textContent = "0.05"; // 显示实际值
+    if (mouthValue) mouthValue.textContent = mouthSlider.value;
+
     // 倾斜灵敏度控制
     tiltSlider.addEventListener('input', (e) => {
         const value = parseFloat(e.target.value);
-        if (tiltValue) tiltValue.textContent = value.toFixed(3);
+        if (tiltValue) tiltValue.textContent = value.toFixed(2);
         if (headControl) {
-            headControl.updateSensitivity(value, headControl.nodThreshold, headControl.mouthOpenThreshold);
+            headControl.updateSensitivity(value, headControl.nodThreshold || parseFloat(nodSlider.value), headControl.mouthOpenThreshold || parseFloat(mouthSlider.value));
         }
     });
 
-    // 仰头灵敏度控制
+    // 点头灵敏度控制 (滑杆向右增加灵敏度，但实际数值越小越灵敏)
     nodSlider.addEventListener('input', (e) => {
-        const value = parseFloat(e.target.value);
-        if (nodValue) nodValue.textContent = value.toFixed(3);
+        const sliderValue = parseFloat(e.target.value);
+        // 将滑杆值(20-80)线性映射到实际灵敏度值(0.08-0.02)
+        // 公式: actualValue = 0.1 - sliderValue/1000
+        const actualValue = 0.1 - sliderValue / 1000;
+        
+        if (nodValue) nodValue.textContent = actualValue.toFixed(3);
         if (headControl) {
-            headControl.updateSensitivity(headControl.headTiltThreshold, value, headControl.mouthOpenThreshold);
+            headControl.updateSensitivity(headControl.headTiltThreshold || parseFloat(tiltSlider.value), actualValue, headControl.mouthOpenThreshold || parseFloat(mouthSlider.value));
         }
     });
 
@@ -852,9 +878,41 @@ function setupSensitivityControls() {
         const value = parseFloat(e.target.value);
         if (mouthValue) mouthValue.textContent = value.toFixed(3);
         if (headControl) {
-            headControl.updateSensitivity(headControl.headTiltThreshold, headControl.nodThreshold, value);
+            headControl.updateSensitivity(headControl.headTiltThreshold || parseFloat(tiltSlider.value), headControl.nodThreshold || parseFloat(nodSlider.value), value);
         }
     });
+
+    console.log('灵敏度控制设置完成');
+}
+
+// 重置灵敏度设置为默认值
+function resetSensitivityToDefault() {
+    const tiltSlider = document.getElementById('tilt-sensitivity');
+    const nodSlider = document.getElementById('nod-sensitivity');
+    const mouthSlider = document.getElementById('mouth-sensitivity');
+    
+    const tiltValue = document.getElementById('tilt-value');
+    const nodValue = document.getElementById('nod-value');
+    const mouthValue = document.getElementById('mouth-value');
+    
+    if (tiltSlider && nodSlider && mouthSlider) {
+        // 重置为默认值
+        tiltSlider.value = "0.15";
+        nodSlider.value = "50"; // 对应0.05的滑杆值（中等灵敏度）
+        mouthSlider.value = "0.02";
+        
+        // 更新显示
+        if (tiltValue) tiltValue.textContent = "0.15";
+        if (nodValue) nodValue.textContent = "0.05"; // 显示实际值
+        if (mouthValue) mouthValue.textContent = "0.02";
+        
+        // 应用到头部控制
+        if (headControl) {
+            headControl.updateSensitivity(0.15, 0.05, 0.02);
+        }
+        
+        console.log('灵敏度设置已重置为默认值');
+    }
 }
 
 // Create background music

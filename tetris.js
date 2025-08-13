@@ -26,7 +26,7 @@ class TetrisGame {
         this.gameRunning = false;
         this.gameLoop = null;
         this.dropTime = 0;
-        this.dropInterval = 667; // 0.667秒，比原来快50%
+        this.dropInterval = 560; // 0.56秒，等级1的初始速度（比原来快44%）
         
         // 方块落地回调
         this.onPiecePlaced = null;
@@ -618,7 +618,8 @@ class TetrisGame {
             // 等级加成
             this.score += scoreToAdd * this.level;
             this.level = Math.floor(this.lines / 10) + 1;
-            this.dropInterval = Math.max(100, 1000 - (this.level - 1) * 100);
+            // 基础速度提高44%：从1000ms改为560ms起始
+            this.dropInterval = Math.max(100, 560 - (this.level - 1) * 56);
             
             // 播放不同的消行音效
             this.playLineClearSound(linesCleared);
@@ -888,7 +889,7 @@ class TetrisGame {
         this.level = 1;
         this.lines = 0;
         this.dropTime = 0;
-        this.dropInterval = 667;
+        this.dropInterval = 560; // 0.56秒，等级1的初始速度（比原来快44%）
         this.initBoard();
         
         // 重置方块生成统计
