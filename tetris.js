@@ -229,7 +229,8 @@ class TetrisGame {
             this.currentPiece = {
                 ...this.nextPiece,
                 x: Math.floor(this.BOARD_WIDTH / 2) - Math.floor(this.nextPiece.shape[0].length / 2),
-                y: 0
+                y: 0,
+                id: Date.now() + Math.random() // Add unique ID for each piece
             };
             this.generateNextPiece();
             
@@ -268,11 +269,11 @@ class TetrisGame {
             
             // 如果是水平移动，检查方块是否应该立即固定
             if (dx !== 0 && this.checkCollision(this.currentPiece, 0, 1)) {
-                // 检查是否在加速状态下
-                const isAccelerating = window.headControl && window.headControl.isAcceleratingDrop;
+                // 检查是否在快速下降状态下
+                const isAccelerating = window.headControl && window.headControl.isHeadLiftTriggered;
                 if (isAccelerating) {
-                    // 加速状态下立即固定方块
-                    console.log('加速状态下方块触底，立即固定');
+                    // 快速下降状态下立即固定方块
+                    console.log('快速下降状态下方块触底，立即固定');
                     this.dropTime = this.dropInterval; // 立即触发下降检查
                 } else {
                     // 正常状态下减少缓冲时间
@@ -302,11 +303,11 @@ class TetrisGame {
             
             // 检查旋转后方块是否应该立即固定
             if (this.checkCollision(this.currentPiece, 0, 1)) {
-                // 检查是否在加速状态下
-                const isAccelerating = window.headControl && window.headControl.isAcceleratingDrop;
+                // 检查是否在快速下降状态下
+                const isAccelerating = window.headControl && window.headControl.isHeadLiftTriggered;
                 if (isAccelerating) {
-                    // 加速状态下立即固定方块
-                    console.log('加速状态下旋转后触底，立即固定');
+                    // 快速下降状态下立即固定方块
+                    console.log('快速下降状态下旋转后触底，立即固定');
                     this.dropTime = this.dropInterval; // 立即触发下降检查
                 } else {
                     // 正常状态下减少缓冲时间
@@ -339,11 +340,11 @@ class TetrisGame {
                 
                 // 检查踢墙后方块是否应该立即固定
                 if (this.checkCollision(this.currentPiece, 0, 1)) {
-                    // 检查是否在加速状态下
-                    const isAccelerating = window.headControl && window.headControl.isAcceleratingDrop;
+                    // 检查是否在快速下降状态下
+                    const isAccelerating = window.headControl && window.headControl.isHeadLiftTriggered;
                     if (isAccelerating) {
-                        // 加速状态下立即固定方块
-                        console.log('加速状态下踢墙后触底，立即固定');
+                        // 快速下降状态下立即固定方块
+                        console.log('快速下降状态下踢墙后触底，立即固定');
                         this.dropTime = this.dropInterval; // 立即触发下降检查
                     } else {
                         // 正常状态下减少缓冲时间
@@ -367,11 +368,11 @@ class TetrisGame {
                 
                 // 检查紧急旋转后方块是否应该立即固定
                 if (this.checkCollision(this.currentPiece, 0, 1)) {
-                    // 检查是否在加速状态下
-                    const isAccelerating = window.headControl && window.headControl.isAcceleratingDrop;
+                    // 检查是否在快速下降状态下
+                    const isAccelerating = window.headControl && window.headControl.isHeadLiftTriggered;
                     if (isAccelerating) {
-                        // 加速状态下立即固定方块
-                        console.log('加速状态下紧急旋转后触底，立即固定');
+                        // 快速下降状态下立即固定方块
+                        console.log('快速下降状态下紧急旋转后触底，立即固定');
                         this.dropTime = this.dropInterval; // 立即触发下降检查
                     } else {
                         // 正常状态下减少缓冲时间
@@ -639,18 +640,33 @@ class TetrisGame {
     // New method to update BLOCK_SIZE based on canvas dimensions
     updateBlockSize() {
         if (this.canvas && this.BOARD_WIDTH && this.BOARD_HEIGHT) {
-            // Set canvas drawing buffer size to match its rendered size (from CSS)
-            // Use Math.floor to ensure integer dimensions for clientWidth/Height
+            // 获取CSS设置的尺寸
+            const cssWidth = this.canvas.clientWidth;
+            const cssHeight = this.canvas.clientHeight;
+            
+            console.log(`Canvas CSS size: ${cssWidth}x${cssHeight}`);
+            
+            // 如果CSS尺寸太小，强制设置更大的尺寸
+            if (cssWidth < 300 || cssHeight < 600) {
+                const newWidth = Math.max(cssWidth, 400);
+                const newHeight = Math.max(cssHeight, 800);
+                this.canvas.style.setProperty('width', newWidth + 'px', 'important');
+                this.canvas.style.setProperty('height', newHeight + 'px', 'important');
+                console.log(`Forced canvas size to: ${newWidth}x${newHeight}`);
+            }
+            
+            // 设置canvas内部绘制尺寸
             this.canvas.width = Math.floor(this.canvas.clientWidth);
             this.canvas.height = Math.floor(this.canvas.clientHeight);
             
-            // Calculate BLOCK_SIZE based on actual canvas width, ensuring it's an integer
+            // 计算方块尺寸
             this.BLOCK_SIZE = Math.floor(this.canvas.width / this.BOARD_WIDTH);
             
-            // Ensure the canvas dimensions are perfectly divisible by BLOCK_SIZE
-            // This is crucial for grid alignment
+            // 确保canvas尺寸能被方块尺寸整除
             this.canvas.width = this.BLOCK_SIZE * this.BOARD_WIDTH;
             this.canvas.height = this.BLOCK_SIZE * this.BOARD_HEIGHT;
+            
+            console.log(`Final canvas internal size: ${this.canvas.width}x${this.canvas.height}, block size: ${this.BLOCK_SIZE}`);
         }
     }
 
@@ -727,6 +743,28 @@ class TetrisGame {
         }
     }
     
+    // 简化的方块绘制函数（用于Next预览，无圆角）
+    drawSimpleBlock(x, y, color, context, blockSize) {
+        const borderOffset = blockSize / 30;
+        const innerOffset = blockSize * (2/30);
+        const shadowOffset = blockSize * (3/30);
+        const highlightThickness = blockSize * (2/30);
+        
+        // 绘制主体方块（矩形，无圆角）
+        context.fillStyle = color;
+        context.fillRect(x + borderOffset, y + borderOffset, blockSize - innerOffset, blockSize - innerOffset);
+        
+        // 绘制高光效果（顶部和左侧）
+        context.fillStyle = this.lightenColor(color, 0.2);
+        context.fillRect(x + borderOffset, y + borderOffset, blockSize - innerOffset, highlightThickness);
+        context.fillRect(x + borderOffset, y + borderOffset, highlightThickness, blockSize - innerOffset);
+        
+        // 绘制阴影效果（底部和右侧）
+        context.fillStyle = this.darkenColor(color, 0.2);
+        context.fillRect(x + blockSize - shadowOffset, y + borderOffset, highlightThickness, blockSize - innerOffset);
+        context.fillRect(x + borderOffset, y + blockSize - shadowOffset, blockSize - innerOffset, highlightThickness);
+    }
+
     drawBlock(x, y, color, context, boardX, boardY, boardWidth, boardHeight) {
         const borderOffset = this.BLOCK_SIZE / 30;
         const innerOffset = this.BLOCK_SIZE * (2/30);
@@ -823,19 +861,39 @@ class TetrisGame {
         this.nextCtx.fillRect(0, 0, this.nextCanvas.width, this.nextCanvas.height);
         
         if (this.nextPiece) {
-            const offsetX = (this.nextCanvas.width - this.nextPiece.shape[0].length * 20) / 2;
-            const offsetY = (this.nextCanvas.height - this.nextPiece.shape.length * 20) / 2;
+            // 计算适合canvas的方块大小
+            const canvasSize = Math.min(this.nextCanvas.width, this.nextCanvas.height);
+            const pieceWidth = this.nextPiece.shape[0].length;
+            const pieceHeight = this.nextPiece.shape.length;
+            const maxPieceSize = Math.max(pieceWidth, pieceHeight);
+            
+            // 方块大小应该适合canvas，留一些边距
+            const blockSize = Math.floor((canvasSize * 0.8) / maxPieceSize);
+            const actualPieceWidth = pieceWidth * blockSize;
+            const actualPieceHeight = pieceHeight * blockSize;
+            
+            // 居中显示
+            const offsetX = (this.nextCanvas.width - actualPieceWidth) / 2;
+            const offsetY = (this.nextCanvas.height - actualPieceHeight) / 2;
+            
+            // 临时保存原始BLOCK_SIZE并设置为next预览的方块大小
+            const originalBlockSize = this.BLOCK_SIZE;
+            this.BLOCK_SIZE = blockSize;
             
             for (let y = 0; y < this.nextPiece.shape.length; y++) {
                 for (let x = 0; x < this.nextPiece.shape[y].length; x++) {
                     if (this.nextPiece.shape[y][x]) {
-                        const drawX = offsetX + x * 20;
-                        const drawY = offsetY + y * 20;
-                        this.nextCtx.fillStyle = this.nextPiece.color;
-                        this.nextCtx.fillRect(drawX, drawY, 18, 18);
+                        const drawX = offsetX + x * blockSize;
+                        const drawY = offsetY + y * blockSize;
+                        
+                        // 使用简化的立体方块绘制（无圆角）
+                        this.drawSimpleBlock(drawX, drawY, this.nextPiece.color, this.nextCtx, blockSize);
                     }
                 }
             }
+            
+            // 恢复原始BLOCK_SIZE
+            this.BLOCK_SIZE = originalBlockSize;
         }
     }
     
@@ -863,6 +921,8 @@ class TetrisGame {
     
     start() {
         this.gameRunning = true;
+        // 确保画布尺寸正确
+        this.updateBlockSize();
         // 移除HTML audio背景音乐控制，由Web Audio API处理
         document.body.classList.add('game-active');
         this.gameLoop = setInterval(() => {

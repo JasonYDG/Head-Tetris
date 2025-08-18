@@ -220,6 +220,35 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // 调整画布尺寸
         adjustCanvasSize();
+        
+        // 初始化next-canvas尺寸
+        const nextCanvas = document.getElementById('next-canvas');
+        if (nextCanvas) {
+            nextCanvas.width = 100;
+            nextCanvas.height = 100;
+        }
+        
+        // 多次强制刷新画布尺寸
+        setTimeout(() => {
+            adjustCanvasSize();
+            if (tetrisGame) {
+                tetrisGame.updateBlockSize();
+            }
+        }, 100);
+        
+        setTimeout(() => {
+            adjustCanvasSize();
+            if (tetrisGame) {
+                tetrisGame.updateBlockSize();
+            }
+        }, 500);
+        
+        setTimeout(() => {
+            adjustCanvasSize();
+            if (tetrisGame) {
+                tetrisGame.updateBlockSize();
+            }
+        }, 1000);
 
         headControl = new HeadControl(tetrisGame, onCalibrationComplete, onFaceStatusChangeCallback);
         window.headControl = headControl; // 暴露到全局作用域供tetris.js访问
@@ -246,6 +275,19 @@ document.addEventListener('DOMContentLoaded', function () {
         setupKeyboardControls();
 
         console.log('游戏初始化完成 - 使用默认摄像头');
+
+        // 定期检查并调整画布尺寸
+        setInterval(() => {
+            if (tetrisGame && tetrisGame.canvas) {
+                const currentWidth = tetrisGame.canvas.clientWidth;
+                const currentHeight = tetrisGame.canvas.clientHeight;
+                if (currentWidth < 300 || currentHeight < 600) {
+                    console.log('Canvas too small, adjusting...');
+                    adjustCanvasSize();
+                    tetrisGame.updateBlockSize();
+                }
+            }
+        }, 2000); // 每2秒检查一次
 
         // 自动启动摄像头
         setTimeout(async () => {
@@ -553,6 +595,11 @@ async function startGameAutomatically() {
         }
 
         console.log('Auto-starting game');
+        
+        // 确保画布尺寸正确
+        adjustCanvasSize();
+        gameInstance.updateBlockSize();
+        
         gameInstance.start();
         isPausedByCamera = false; // Game started manually, clear camera pause flag
 
@@ -1216,9 +1263,21 @@ function setViewportHeight() {
 }
 
 // 监听窗口大小变化
-window.addEventListener('resize', setViewportHeight);
+window.addEventListener('resize', () => {
+    setViewportHeight();
+    adjustCanvasSize(); // 同时调整画布尺寸
+    if (tetrisGame) {
+        tetrisGame.updateBlockSize(); // 更新方块尺寸
+    }
+});
 window.addEventListener('orientationchange', () => {
-    setTimeout(setViewportHeight, 100);
+    setTimeout(() => {
+        setViewportHeight();
+        adjustCanvasSize(); // 同时调整画布尺寸
+        if (tetrisGame) {
+            tetrisGame.updateBlockSize(); // 更新方块尺寸
+        }
+    }, 100);
 });
 
 // 初始设置
@@ -1230,45 +1289,69 @@ function adjustCanvasSize() {
     const outputCanvas = document.getElementById('output_canvas');
     
     if (tetrisCanvas) {
-        const container = tetrisCanvas.parentElement;
-        const containerWidth = container.clientWidth;
-        const containerHeight = container.clientHeight;
+        // 强制重置所有样式
+        tetrisCanvas.style.width = '';
+        tetrisCanvas.style.height = '';
+        tetrisCanvas.style.maxWidth = '';
+        tetrisCanvas.style.maxHeight = '';
         
-        // 保持2:4的宽高比
-        const aspectRatio = 1 / 2;
+        // 获取视口尺寸
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // 计算可用空间（更激进的计算）
+        const leftPanelWidth = 300; // 左侧面板宽度
+        const headerHeight = 150; // 标题和分数区域高度
+        const controlsHeight = 80; // 底部控制按钮高度
+        const padding = 40; // 总padding
+        
+        const availableWidth = viewportWidth - leftPanelWidth - padding;
+        const availableHeight = viewportHeight - headerHeight - controlsHeight - padding;
+        
+        // 计算最大可能的画布尺寸（保持1:2比例）
         let canvasWidth, canvasHeight;
         
-        if (containerWidth * 2 <= containerHeight) {
-            canvasWidth = Math.min(containerWidth, 390); // 30% larger
-            canvasHeight = canvasWidth * 2;
+        // 尝试两种方向，选择更大的
+        const widthBasedHeight = availableWidth * 2;
+        const heightBasedWidth = availableHeight / 2;
+        
+        if (widthBasedHeight <= availableHeight) {
+            // 宽度限制
+            canvasWidth = availableWidth;
+            canvasHeight = widthBasedHeight;
         } else {
-            canvasHeight = Math.min(containerHeight, 780); // 30% larger
-            canvasWidth = canvasHeight / 2;
+            // 高度限制
+            canvasWidth = heightBasedWidth;
+            canvasHeight = availableHeight;
         }
         
-        tetrisCanvas.style.width = canvasWidth + 'px';
-        tetrisCanvas.style.height = canvasHeight + 'px';
+        // 确保最小尺寸
+        canvasWidth = Math.max(canvasWidth, 300);
+        canvasHeight = Math.max(canvasHeight, 600);
+        
+        // 确保最大尺寸不超过视口
+        canvasWidth = Math.min(canvasWidth, availableWidth);
+        canvasHeight = Math.min(canvasHeight, availableHeight);
+        
+        // 强制设置尺寸
+        tetrisCanvas.style.setProperty('width', canvasWidth + 'px', 'important');
+        tetrisCanvas.style.setProperty('height', canvasHeight + 'px', 'important');
+        
+        console.log(`Canvas forced to: ${canvasWidth}x${canvasHeight}, viewport: ${viewportWidth}x${viewportHeight}, available: ${availableWidth}x${availableHeight}`);
     }
     
     if (outputCanvas) {
         const container = outputCanvas.parentElement;
         const containerWidth = container.clientWidth;
-        const containerHeight = container.clientHeight;
         
-        // 摄像头画布保持4:3比例
-        const aspectRatio = 4 / 3;
-        let canvasWidth, canvasHeight;
-        
-        if (containerWidth / containerHeight > aspectRatio) {
-            canvasHeight = Math.min(containerHeight, 240);
-            canvasWidth = canvasHeight * aspectRatio;
-        } else {
-            canvasWidth = Math.min(containerWidth, 320);
-            canvasHeight = canvasWidth / aspectRatio;
-        }
+        // 摄像头画布保持4:3比例，使用固定宽度280px（与左侧面板一致）
+        const canvasWidth = 280;
+        const canvasHeight = canvasWidth * 3 / 4; // 4:3比例
         
         outputCanvas.style.width = canvasWidth + 'px';
         outputCanvas.style.height = canvasHeight + 'px';
+        
+        console.log(`Output canvas resized to: ${canvasWidth}x${canvasHeight}`);
     }
 }
 
@@ -1312,3 +1395,31 @@ function toggleDebug() {
         }
     }
 }
+// 页面完
+全加载后的强制调整
+window.addEventListener('load', () => {
+    setTimeout(() => {
+        console.log('Page fully loaded, forcing canvas resize...');
+        adjustCanvasSize();
+        if (tetrisGame) {
+            tetrisGame.updateBlockSize();
+        }
+    }, 500);
+});
+
+// 强制定期检查和调整
+setInterval(() => {
+    const canvas = document.getElementById('tetris-canvas');
+    if (canvas) {
+        const currentWidth = canvas.clientWidth;
+        const currentHeight = canvas.clientHeight;
+        
+        if (currentWidth < 350 || currentHeight < 700) {
+            console.log(`Canvas too small (${currentWidth}x${currentHeight}), forcing resize...`);
+            adjustCanvasSize();
+            if (tetrisGame) {
+                tetrisGame.updateBlockSize();
+            }
+        }
+    }
+}, 3000); // 每3秒检查一次

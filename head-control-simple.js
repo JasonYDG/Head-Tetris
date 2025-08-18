@@ -10,29 +10,29 @@ class HeadControl {
         this.faceMesh = null;
         this.camera = null;
         this.isActive = false;
-        
+
         // Control parameters (adjustable)
         this.headTiltThreshold = 0.15; // Left/right tilt threshold (based on eye line angle)
         this.mouthOpenThreshold = 0.02; // Mouth open detection threshold
-        
+
         // Debounce parameters
         this.lastAction = '';
         this.actionCooldown = 300;
         this.lastActionTime = 0;
-        
+
         // Left/right movement state tracking
         this.currentTiltState = 'center';
         this.lastTiltState = 'center';
-        
+
         // Baseline position
         this.baselineNose = null;
         this.baselineMouth = null;
         this.calibrationFrames = 0;
         this.maxCalibrationFrames = 30;
-        
+
         // Mouth state tracking
         this.mouthWasOpen = false;
-        
+
         // Continuous movement detection
         this.continuousMoveStartTime = 0;
         this.continuousMoveThreshold = 1000;
@@ -41,38 +41,47 @@ class HeadControl {
         this.isInContinuousMode = false;
         this.isInFastMoveMode = false;
         this.fastMoveStartTime = 0;
-        
+
         // Fast movement detection (large tilt)
         this.fastMoveThreshold = 0.22;
         this.fastMoveInterval = 90;
-        
-        // Nod acceleration drop detection (modified to nod action detection)
-        this.nodStartTime = 0;
-        this.nodThreshold = 0.05; // Nod detection threshold (中等灵敏度)
-        this.isNodding = false;
-        this.lastNodTime = 0;
-        this.nodCooldown = 200; // Nod cooldown time, prevent repeated detection (降低冷却时间)
-        
-        // Nod state tracking
-        this.nosePositionHistory = [];
-        this.maxNoseHistory = 10;
-        this.dynamicBaseline = null;
-        this.baselineUpdateInterval = 20; // 更快的基线更新，更好地适应头部位置
-        this.frameCount = 0;
-        this.lastNoseY = 0;
-        this.nodDirection = 'none'; // 'down', 'up', 'none'
-        this.nodPhase = 'waiting'; // 'waiting', 'going_down', 'going_up', 'completed'
-        
+
+        // Head lift detection using head pitch angle (more accurate)
+        this.headLiftAngleThreshold = 5; // Degrees - head pitch angle threshold for fast drop (lowered for easier trigger)
+        this.headLiftThreshold = 0.50; // Backup: Ratio threshold (when eye-mouth distance < 50% of initial)
+        this.headLiftCancelThreshold = 0.50; // Cancel threshold (when distance >= 50% of initial)
+        this.headVerticalThreshold = 45; // Degrees - maximum head tilt angle to allow fast drop (only prevent when extremely tilted)
+        this.isHeadLifted = false; // Current head lift state (for display)
+        this.isHeadLiftTriggered = false; // Whether fast drop is actually triggered
+        this.headLiftStartTime = 0; // When head lift started
+        this.headLiftTriggerDelay = 0; // No delay - immediate trigger
+        this.lastFastDropTime = 0;
+        this.fastDropInterval = 80; // Fixed fast drop interval (80ms = 12.5 drops per second)
+        this.currentPieceId = null; // Track current piece to reset on new piece
+
+        // Eye-mouth distance trend tracking
+        this.eyeMouthDistanceHistory = [];
+        this.maxDistanceHistory = 10; // Shorter history for more responsive detection
+        this.initialEyeMouthDistance = null; // Initial distance when calibration completes
+        this.currentEyeMouthDistance = null;
+
         // Status display control
         this.showDetailedStatus = true; // Can be set to false to show mini status
-        
+
         // Calibration complete prompt control
         this.calibrationCompleteTime = 0;
         this.showCalibrationComplete = false;
-        
+
+        // Debug frame counters
+        this.frameCounter = 0;
+        this.distanceFrameCounter = 0;
+
+        // Baseline forehead-chin distance for head lift detection
+        this.baselineForeheadChinDistance = null;
+
         this.initMediaPipe();
     }
-    
+
     async initMediaPipe() {
         try {
             this.faceMesh = new FaceMesh({
@@ -80,30 +89,58 @@ class HeadControl {
                     return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
                 }
             });
-            
+
             this.faceMesh.setOptions({
                 maxNumFaces: 1,
                 refineLandmarks: false, // 关闭精细化地标检测以减少CPU使用
-                minDetectionConfidence: 0.4, // 降低检测置信度阈值
-                minTrackingConfidence: 0.4  // 降低跟踪置信度阈值
+                minDetectionConfidence: 0.3, // 进一步降低检测置信度阈值
+                minTrackingConfidence: 0.3, // 进一步降低跟踪置信度阈值
+                selfieMode: true, // 启用自拍模式
+                staticImageMode: false, // 确保视频模式
+                modelComplexity: 0 // 使用最简单的模型以减少GPU负载
             });
-            
+
             this.faceMesh.onResults(this.onResults.bind(this));
-            
+
             console.log('MediaPipe Face Mesh initialized successfully');
         } catch (error) {
             console.error('MediaPipe initialization failed:', error);
+
+            // Show user-friendly error message
+            const canvas = document.getElementById('output_canvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(255, 107, 107, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                ctx.fillText('MediaPipe Error', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = '12px Arial';
+                ctx.fillText('Try refreshing the page', canvas.width / 2, canvas.height / 2 + 10);
+            }
         }
     }
-    
+
     async startCamera() {
         try {
+            // Check WebGL support
+            const testCanvas = document.createElement('canvas');
+            const gl = testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl');
+            if (!gl) {
+                console.warn('WebGL not supported, MediaPipe may have issues');
+                alert('Warning: Your browser may not fully support this feature. Try using Chrome or Edge for better compatibility.');
+            }
+
             const video = document.getElementById('input_video');
             const canvas = document.getElementById('output_canvas');
-            
+
             // Reset calibration state
             this.resetCalibration();
-            
+
             // Use default camera, simple configuration
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
@@ -111,25 +148,25 @@ class HeadControl {
                     height: 240
                 }
             });
-            
+
             video.srcObject = stream;
             video.autoplay = true;
             video.playsInline = true;
             video.muted = true;
-            
+
             // Wait for video to load
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => {
                     video.play().then(resolve);
                 };
             });
-            
+
             // Create MediaPipe Camera
             this.camera = new Camera(video, {
                 onFrame: async () => {
                     try {
                         if (this.faceMesh && video.readyState === 4) {
-                            await this.faceMesh.send({image: video});
+                            await this.faceMesh.send({ image: video });
                         }
                     } catch (error) {
                         console.error('Frame processing error:', error);
@@ -138,11 +175,11 @@ class HeadControl {
                 width: 320,
                 height: 240
             });
-            
+
             await this.camera.start();
             this.isActive = true;
             console.log('Default camera started successfully');
-            
+
             // Display initial status
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -160,52 +197,59 @@ class HeadControl {
 
             ctx.fillText(line1, centerX, centerY - 15);
             ctx.fillText(line2, centerX, centerY + 15);
-            
+
         } catch (error) {
             console.error('Camera startup failed:', error);
             let errorMessage = 'Cannot access camera';
-            
+
             if (error.name === 'NotAllowedError') {
                 errorMessage = 'Camera permission denied, please check browser settings';
             } else if (error.name === 'NotReadableError') {
                 errorMessage = 'Camera is in use by another application';
             }
-            
+
             alert(errorMessage);
             throw error;
         }
     }
-    
+
     onResults(results) {
         try {
             const canvas = document.getElementById('output_canvas');
             const ctx = canvas.getContext('2d');
-            
+
             // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw video frame
+
+            // Draw video frame with error handling
             if (results.image) {
-                ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+                try {
+                    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+                } catch (webglError) {
+                    console.warn('WebGL drawing error, using fallback:', webglError);
+                    // Fallback: just fill with a solid color
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
             }
-            
+
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 this.isFaceDetected = true; // Face detected
                 const landmarks = results.multiFaceLandmarks[0];
-                
+
                 // Draw face landmarks every frame
                 this.drawLandmarks(ctx, landmarks);
-                
+
                 // Calibrate baseline position
                 if (this.calibrationFrames < this.maxCalibrationFrames) {
                     this.calibrateBaseline(landmarks);
                     this.calibrationFrames++;
-                    
+
                     // Display calibration progress
                     this.drawCalibrationProgress(ctx);
                     return;
                 }
-                
+
                 // Display calibration complete status (disappears after 5 seconds)
                 const now = Date.now();
                 if (this.showCalibrationComplete && (now - this.calibrationCompleteTime < 5000)) {
@@ -213,10 +257,15 @@ class HeadControl {
                 } else if (this.showCalibrationComplete && (now - this.calibrationCompleteTime >= 5000)) {
                     this.showCalibrationComplete = false;
                 }
-                
+
                 // Detect head movements
                 this.detectHeadMovements(landmarks);
-                
+
+                // Detect head lift for accelerated drop (independent of action cooldown)
+                if (this.tetrisGame.gameRunning) {
+                    this.checkNodAcceleration(landmarks);
+                }
+
                 // Display control status (detail level controlled by showDetailedStatus)
                 if (this.showDetailedStatus !== false) {
                     this.drawControlStatus(ctx, landmarks);
@@ -245,41 +294,66 @@ class HeadControl {
             }
         } catch (error) {
             console.error('onResults processing error:', error);
+
+            // If it's a WebGL error, try to continue with basic functionality
+            if (error.message && error.message.includes('WebGL')) {
+                console.log('WebGL error detected, continuing with basic face detection...');
+
+                // Try to continue with landmarks processing only
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                    try {
+                        const landmarks = results.multiFaceLandmarks[0];
+
+                        // Skip drawing, just do detection
+                        if (this.calibrationFrames < this.maxCalibrationFrames) {
+                            this.calibrateBaseline(landmarks);
+                            this.calibrationFrames++;
+                        } else {
+                            this.detectHeadMovements(landmarks);
+                            if (this.tetrisGame.gameRunning) {
+                                this.checkNodAcceleration(landmarks);
+                            }
+                        }
+                    } catch (detectionError) {
+                        console.error('Face detection error:', detectionError);
+                    }
+                }
+            }
         }
     }
-    
+
     calibrateBaseline(landmarks) {
         try {
             const nose = landmarks[1];
             const upperLip = landmarks[13] || landmarks[12];
             const lowerLip = landmarks[14] || landmarks[15];
-            
+
             if (!nose || !upperLip || !lowerLip) {
                 return;
             }
-            
+
             if (!this.baselineNose) {
-                this.baselineNose = {x: 0, y: 0, z: 0};
-                this.baselineMouth = {distance: 0};
+                this.baselineNose = { x: 0, y: 0, z: 0 };
+                this.baselineMouth = { distance: 0 };
             }
-            
+
             this.baselineNose.x += nose.x;
             this.baselineNose.y += nose.y;
             this.baselineNose.z += nose.z;
-            
+
             const mouthDistance = Math.abs(upperLip.y - lowerLip.y);
             this.baselineMouth.distance += mouthDistance;
-            
+
             if (this.calibrationFrames === this.maxCalibrationFrames - 1) {
                 this.baselineNose.x /= this.maxCalibrationFrames;
                 this.baselineNose.y /= this.maxCalibrationFrames;
                 this.baselineNose.z /= this.maxCalibrationFrames;
                 this.baselineMouth.distance /= this.maxCalibrationFrames;
-                
+
                 // Record calibration completion time
                 this.calibrationCompleteTime = Date.now();
                 this.showCalibrationComplete = true;
-                
+
                 console.log('Calibration complete!');
 
                 if (this.onCalibrationComplete) {
@@ -291,7 +365,7 @@ class HeadControl {
             console.error('Calibration process error:', error);
         }
     }
-    
+
     resetCalibration() {
         this.calibrationFrames = 0;
         this.baselineNose = null;
@@ -303,59 +377,63 @@ class HeadControl {
         this.isInContinuousMode = false;
         this.isInFastMoveMode = false;
         this.fastMoveStartTime = 0;
-        this.nodStartTime = 0;
-        this.isNodding = false;
-        this.lastNodTime = 0;
         this.lastAction = '';
         this.lastActionTime = 0;
-        
+
         // Reset calibration complete prompt
         this.calibrationCompleteTime = 0;
         this.showCalibrationComplete = false;
-        
-        // Reset nod detection system
-        this.nosePositionHistory = [];
-        this.dynamicBaseline = null;
-        this.frameCount = 0;
-        this.lastNoseY = 0;
-        this.nodDirection = 'none';
-        this.nodPhase = 'waiting';
+
+        // Reset head lift detection system
+        this.eyeMouthDistanceHistory = [];
+        this.initialEyeMouthDistance = null;
+        this.currentEyeMouthDistance = null;
+        this.isHeadLifted = false;
+        this.isHeadLiftTriggered = false;
+        this.currentPieceId = null;
 
         // Reset face detection status
         this.isFaceDetected = false;
         this.lastFaceDetectionStatus = false;
         this.calibrationCompletedNotified = false; // New property
+
+        // Reset debug counters
+        this.frameCounter = 0;
+        this.distanceFrameCounter = 0;
+
+        // Reset baseline distance
+        this.baselineForeheadChinDistance = null;
     }
-    
+
     // Simplified head movement detection
     detectHeadMovements(landmarks) {
         if (!this.baselineNose || !this.baselineMouth) {
             return;
         }
-        
+
         const now = Date.now();
         if (now - this.lastActionTime < this.actionCooldown) return;
-        
+
         try {
             const nose = landmarks[1];
             const upperLip = landmarks[13] || landmarks[12];
             const lowerLip = landmarks[14] || landmarks[15];
-            
+
             if (!nose || !upperLip || !lowerLip) {
                 return;
             }
-            
+
             // Calculate head tilt
             const tiltX = this.calculateHeadTilt(landmarks);
             const noseY = nose.y;
-            
+
             // Calculate mouth open degree
             const mouthDistance = Math.abs(upperLip.y - lowerLip.y);
             const mouthOpen = mouthDistance - this.baselineMouth.distance;
             const isMouthOpen = mouthOpen > this.mouthOpenThreshold;
-            
+
             let action = '';
-            
+
             // Update current tilt state
             if (tiltX > this.headTiltThreshold) {
                 this.currentTiltState = 'right';
@@ -364,20 +442,20 @@ class HeadControl {
             } else {
                 this.currentTiltState = 'center';
             }
-            
+
             // Detect mouth open for rotation
             if (isMouthOpen && !this.mouthWasOpen) {
                 action = 'rotate';
             }
-            // Detect left/right tilt (not disabled during nod, as nod is instantaneous)
+            // Detect left/right tilt (not disabled during head lift)
             else if (this.currentTiltState !== 'center') {
                 const isFastTilt = Math.abs(tiltX) > this.fastMoveThreshold;
-                
+
                 if (this.lastTiltState === 'center') {
                     action = this.currentTiltState;
                     this.continuousMoveStartTime = now;
                     this.isInContinuousMode = false;
-                    
+
                     if (isFastTilt) {
                         this.fastMoveStartTime = now;
                         this.isInFastMoveMode = true;
@@ -386,7 +464,7 @@ class HeadControl {
                     }
                 } else if (this.currentTiltState === this.lastTiltState) {
                     const holdTime = now - this.continuousMoveStartTime;
-                    
+
                     if (isFastTilt && this.isInFastMoveMode) {
                         if (now - this.lastContinuousMoveTime >= this.fastMoveInterval) {
                             action = this.currentTiltState;
@@ -396,12 +474,12 @@ class HeadControl {
                         this.isInContinuousMode = true;
                         this.lastContinuousMoveTime = now;
                         action = this.currentTiltState;
-                    } else if (this.isInContinuousMode && 
-                              now - this.lastContinuousMoveTime >= this.continuousMoveInterval) {
+                    } else if (this.isInContinuousMode &&
+                        now - this.lastContinuousMoveTime >= this.continuousMoveInterval) {
                         action = this.currentTiltState;
                         this.lastContinuousMoveTime = now;
                     }
-                    
+
                     if (isFastTilt && !this.isInFastMoveMode) {
                         this.isInFastMoveMode = true;
                         this.fastMoveStartTime = now;
@@ -418,22 +496,19 @@ class HeadControl {
                 this.isInFastMoveMode = false;
                 this.fastMoveStartTime = 0;
             }
-            
-            // Detect nod for accelerated drop
-            if (this.tetrisGame.gameRunning) {
-                this.checkNodAcceleration(noseY);
-            }
-            
+
+
+
             this.mouthWasOpen = isMouthOpen;
             this.lastTiltState = this.currentTiltState;
-            
+
             // Execute action
             if (action) {
                 if (action === 'rotate' || action !== this.lastAction) {
                     this.executeAction(action);
                     this.lastAction = action;
                     this.lastActionTime = now;
-                    
+
                     setTimeout(() => {
                         this.lastAction = '';
                     }, this.actionCooldown);
@@ -443,181 +518,272 @@ class HeadControl {
             console.error('Action detection error:', error);
         }
     }
-    
-    // Nod detection (detects full nod action: down then up, or up then down)
-    checkNodAcceleration(noseY) {
+
+    // Head lift detection for continuous fast drop (using eye-mouth distance trend)
+    checkNodAcceleration(landmarks) {
         const now = Date.now();
 
-        this.updateNosePositionHistory(noseY);
-
-        if (!this.dynamicBaseline) return false;
-
-        // Calculate position relative to baseline
-        const relativePosition = noseY - this.dynamicBaseline;
-        const nodDownThreshold = this.nodThreshold;
-        const nodUpThreshold = -this.nodThreshold; // Upward movement is negative
-
-        const currentDirection = relativePosition > nodDownThreshold ? 'down' :
-            relativePosition < nodUpThreshold ? 'up' : 'center';
-
-        // 标准点头检测：只检测"向下-向上"的点头动作
-        switch (this.nodPhase) {
-            case 'waiting':
-                // 只有向下的动作才开始点头检测
-                if (currentDirection === 'down') {
-                    this.nodPhase = 'going_down';
-                    this.nodStartTime = now;
-                    console.log('开始点头 - 向下阶段');
-                }
-                // 忽略向上的动作，不触发检测
-                break;
-
-            case 'going_down':
-                // 从向下阶段返回到中心或向上，完成一次标准点头
-                if (currentDirection === 'up' || currentDirection === 'center') {
-                    if (now - this.nodStartTime > 80 && now - this.nodStartTime < 1000) { 
-                        // 防抖动：80ms-1000ms之间的动作才有效（放宽时间窗口）
-                        this.nodPhase = 'completed';
-                        console.log('标准点头完成 (向下-向上)，触发快速下降');
-                        this.triggerNodDrop();
-                    } else {
-                        this.nodPhase = 'waiting'; // 动作太快或太慢，重置
-                        console.log('点头动作时间不合适，重置');
-                    }
-                } else if (now - this.nodStartTime > 1000) {
-                    // 超时重置
-                    this.nodPhase = 'waiting';
-                    console.log('点头检测超时，重置');
-                }
-                break;
-
-            case 'completed':
-                // 等待头部回到中心位置，准备下次检测
-                if (currentDirection === 'center') {
-                    this.nodPhase = 'waiting';
-                    console.log('头部回到中心，准备下次点头检测');
-                } else if (now - this.nodStartTime > 2000) {
-                    // 强制超时重置
-                    this.nodPhase = 'waiting';
-                    console.log('点头完成状态超时，强制重置');
-                }
-                break;
+        // Debug: confirm function is being called
+        if (!this.nodCallCounter) this.nodCallCounter = 0;
+        this.nodCallCounter++;
+        if (this.nodCallCounter % 120 === 0) { // Every 2 seconds
+            console.log(`[调试] checkNodAcceleration 已调用 ${this.nodCallCounter} 次`);
         }
 
-        return false; // No continuous acceleration needed
-    }
-    
-    // Trigger nod drop
-    triggerNodDrop() {
-        const now = Date.now();
-
-        // 冷却时间检查，防止过于频繁触发
-        if (now - this.lastNodTime < this.nodCooldown) {
-            console.log('点头触发在冷却时间内，忽略');
-            return;
+        // Calculate forehead to chin distance (when head lifts up, this distance gets shorter)
+        const foreheadChinDistance = this.calculateForeheadChinDistance(landmarks);
+        if (foreheadChinDistance === null) {
+            console.log('[调试] calculateForeheadChinDistance 返回 null');
+            return false;
         }
 
-        this.lastNodTime = now;
+        // Set baseline distance if not set (after calibration)
+        if (!this.baselineForeheadChinDistance && this.calibrationFrames >= this.maxCalibrationFrames) {
+            this.baselineForeheadChinDistance = foreheadChinDistance;
+            console.log(`[初始化] 基准额头-下巴距离: ${this.baselineForeheadChinDistance.toFixed(4)}`);
+            return false;
+        }
 
-        if (this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
-            console.log('点头触发快速下降，尝试下降5格');
+        if (!this.baselineForeheadChinDistance) {
+            return false;
+        }
 
-            // 增加快速下降的格数，让效果更明显
-            for (let i = 0; i < 5; i++) {
-                // 尝试下降一格
-                if (!this.tetrisGame.movePiece(0, 1)) {
-                    // 如果下降失败，说明方块已经触底
-                    console.log(`第${i + 1}格下降失败，方块触底并立即锁定`);
-                    this.tetrisGame.dropTime = this.tetrisGame.dropInterval; // 强制立即锁定
-                    break; // 停止继续尝试下降
-                } else {
-                    console.log(`成功下降第${i + 1}格`);
-                }
+        // Calculate distance ratio
+        const distanceRatio = foreheadChinDistance / this.baselineForeheadChinDistance;
+
+        // Debug logging (use frame counter instead)
+        if (!this.frameCounter) this.frameCounter = 0;
+        this.frameCounter++;
+
+        if (this.frameCounter % 30 === 0) {
+            console.log(`[距离] 当前额头-下巴距离: ${foreheadChinDistance.toFixed(4)}, 基准: ${this.baselineForeheadChinDistance.toFixed(4)}, 比例: ${(distanceRatio * 100).toFixed(1)}%, 阈值: 85%, 快速下降: ${this.isHeadLiftTriggered ? '开启' : '关闭'}`);
+        }
+
+        // Track current piece ID
+        if (this.tetrisGame.currentPiece && this.currentPieceId !== this.tetrisGame.currentPiece.id) {
+            this.currentPieceId = this.tetrisGame.currentPiece.id;
+        }
+
+        // Check if head is severely tilted (face not vertical)
+        const headTiltAngle = this.calculateHeadTiltAngle(landmarks);
+        const isHeadSeverelyTilted = headTiltAngle !== null && Math.abs(headTiltAngle) > this.headVerticalThreshold;
+
+        // When head lifts up, forehead-chin distance becomes shorter (< 85% of baseline)
+        // But only trigger if head is not severely tilted
+        const isCurrentlyLifted = distanceRatio < 0.85 && !isHeadSeverelyTilted;
+
+        // Debug logging for head tilt (more frequent for testing)
+        if (this.frameCounter % 15 === 0 && headTiltAngle !== null) {
+            console.log(`[倾斜] 头部倾斜角度: ${headTiltAngle.toFixed(1)}°, 严重倾斜: ${isHeadSeverelyTilted ? '是' : '否'} (阈值: ${this.headVerticalThreshold}°)`);
+        }
+
+        // Detect head lift state changes
+        if (isCurrentlyLifted && !this.isHeadLiftTriggered) {
+            // Head just lifted - immediate trigger
+            this.isHeadLifted = true;
+            this.isHeadLiftTriggered = true;
+            this.lastFastDropTime = 0; // Reset to allow immediate first drop
+            console.log(`[触发] 额头-下巴距离缩短到 ${(distanceRatio * 100).toFixed(1)}% < 85%，头部垂直，立即开始快速下降`);
+        } else if (!isCurrentlyLifted && this.isHeadLiftTriggered) {
+            // Head lowered or tilted - immediate stop
+            this.isHeadLifted = false;
+            this.isHeadLiftTriggered = false;
+            const reason = isHeadSeverelyTilted ? '头部严重倾斜' : '距离恢复';
+            console.log(`[停止] ${reason}，立即停止快速下降 (距离: ${(distanceRatio * 100).toFixed(1)}%, 倾斜: ${headTiltAngle ? headTiltAngle.toFixed(1) + '°' : 'N/A'})`);
+        }
+
+        // Continuous fast drop while head lift is triggered
+        if (this.isHeadLiftTriggered && this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
+            if (now - this.lastFastDropTime >= this.fastDropInterval) {
+                this.triggerContinuousDrop();
+                this.lastFastDropTime = now;
+                console.log(`[执行] 快速下降 - 距离比例: ${(distanceRatio * 100).toFixed(1)}%`);
             }
-        } else {
-            console.log('游戏未运行或无当前方块，忽略点头触发');
+        }
+
+        return false;
+    }
+
+    // Trigger continuous drop while head is lifted
+    triggerContinuousDrop() {
+        if (this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
+            // 尝试下降一格，如果失败也不停止（让游戏自己处理方块放置）
+            this.tetrisGame.movePiece(0, 1);
         }
     }
-    
-    updateNosePositionHistory(noseY) {
-        this.nosePositionHistory.push(noseY);
-        if (this.nosePositionHistory.length > this.maxNoseHistory) {
-            this.nosePositionHistory.shift();
+
+    // Reset drop speed when piece is placed (called from game)
+    resetDropSpeed() {
+        // 不重置快速下降状态，让它持续到用户放下头部
+        this.currentPieceId = null;
+        console.log('方块放置，快速下降状态继续');
+    }
+
+    // Calculate distance between nose tip and mouth center
+    calculateEyeMouthDistance(landmarks) {
+        if (!landmarks || landmarks.length < 400) return null;
+
+        // Eye landmarks (using eye centers for stability)
+        const leftEye = landmarks[33]; // Left eye center
+        const rightEye = landmarks[362]; // Right eye center  
+        const upperLip = landmarks[13] || landmarks[12]; // Upper lip center
+        const lowerLip = landmarks[14] || landmarks[15]; // Lower lip center
+
+        if (!leftEye || !rightEye || !upperLip || !lowerLip) return null;
+
+        // Calculate eye center (between left and right eyes)
+        const eyeCenterX = (leftEye.x + rightEye.x) / 2;
+        const eyeCenterY = (leftEye.y + rightEye.y) / 2;
+
+        // Calculate mouth center
+        const mouthCenterX = (upperLip.x + lowerLip.x) / 2;
+        const mouthCenterY = (upperLip.y + lowerLip.y) / 2;
+
+        // Calculate Euclidean distance between eye center and mouth center
+        const dx = eyeCenterX - mouthCenterX;
+        const dy = eyeCenterY - mouthCenterY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        return distance;
+    }
+
+    // Calculate forehead to chin distance (gets shorter when head lifts up)
+    calculateForeheadChinDistance(landmarks) {
+        if (!landmarks || landmarks.length < 400) {
+            console.log('[距离] 地标点数量不足:', landmarks ? landmarks.length : 0);
+            return null;
         }
-        
-        this.frameCount++;
-        
-        if (this.frameCount % this.baselineUpdateInterval === 0 && this.nosePositionHistory.length >= 10) {
-            const sortedHistory = [...this.nosePositionHistory].sort((a, b) => a - b);
-            const medianIndex = Math.floor(sortedHistory.length / 2);
-            this.dynamicBaseline = sortedHistory[medianIndex];
+
+        // Key landmarks for distance calculation
+        const forehead = landmarks[10];      // Forehead center
+        const chinTip = landmarks[175];      // Chin tip
+
+        if (!forehead || !chinTip) {
+            console.log('[距离] 关键地标点缺失:', {
+                forehead: !!forehead,
+                chinTip: !!chinTip
+            });
+            return null;
+        }
+
+        // Calculate Euclidean distance between forehead and chin
+        const dx = forehead.x - chinTip.x;
+        const dy = forehead.y - chinTip.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Debug logging every 60 frames
+        if (!this.distanceFrameCounter) this.distanceFrameCounter = 0;
+        this.distanceFrameCounter++;
+        if (this.distanceFrameCounter % 60 === 0) {
+            console.log(`[距离详细] 额头坐标: (${forehead.x.toFixed(3)}, ${forehead.y.toFixed(3)}), 下巴坐标: (${chinTip.x.toFixed(3)}, ${chinTip.y.toFixed(3)}), 距离: ${distance.toFixed(4)}`);
+        }
+
+        return distance;
+    }
+
+    // Calculate head tilt angle using eye landmarks
+    calculateHeadTiltAngle(landmarks) {
+        if (!landmarks || landmarks.length < 400) {
+            return null;
+        }
+
+        // Use eye landmarks to calculate head tilt
+        const leftEye = landmarks[33];  // Left eye center
+        const rightEye = landmarks[362]; // Right eye center
+
+        if (!leftEye || !rightEye) {
+            return null;
+        }
+
+        // Calculate the angle between the two eyes
+        const deltaX = rightEye.x - leftEye.x;
+        const deltaY = rightEye.y - leftEye.y;
+
+        // Calculate angle in degrees
+        // Positive angle means head tilted to the right, negative means tilted to the left
+        const angleRadians = Math.atan2(deltaY, deltaX);
+        const angleDegrees = angleRadians * (180 / Math.PI);
+
+        return angleDegrees;
+    }
+
+    updateEyeMouthDistanceHistory(distance) {
+        this.eyeMouthDistanceHistory.push(distance);
+        if (this.eyeMouthDistanceHistory.length > this.maxDistanceHistory) {
+            this.eyeMouthDistanceHistory.shift();
         }
     }
-    
+
+    getAverageDistance() {
+        if (this.eyeMouthDistanceHistory.length === 0) return null;
+        const sum = this.eyeMouthDistanceHistory.reduce((a, b) => a + b, 0);
+        return sum / this.eyeMouthDistanceHistory.length;
+    }
+
     calculateHeadTilt(landmarks) {
         const leftEye = landmarks[33];
         const rightEye = landmarks[362];
-        
+
         if (!leftEye || !rightEye) {
             const nose = landmarks[1];
             return nose.x - this.baselineNose.x;
         }
-        
+
         const eyeLineAngle = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
         return Math.sin(eyeLineAngle);
     }
-    
+
     executeAction(action) {
         if (!this.tetrisGame.gameRunning) return;
-        
-        // Only disable move operations in accelerated state, allow rotation
-        if (this.isAcceleratingDrop && (action === 'left' || action === 'right')) {
-            console.log('Move operation disabled in accelerated state:', action);
+
+        // Only disable move operations when fast drop is active (to avoid interference), allow rotation
+        if (this.isHeadLiftTriggered && (action === 'left' || action === 'right')) {
+            console.log('Move operation disabled during fast drop:', action);
             return;
         }
-        
+
         switch (action) {
             case 'left':
-                this.tetrisGame.movePiece(1, 0);
+                this.tetrisGame.movePiece(-1, 0);
                 break;
             case 'right':
-                this.tetrisGame.movePiece(-1, 0);
+                this.tetrisGame.movePiece(1, 0);
                 break;
             case 'rotate':
                 this.tetrisGame.rotatePiece();
                 break;
         }
     }
-    
+
     drawLandmarks(ctx, landmarks) {
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
-        
+
         // 提高面部亮度和对比度
         ctx.globalCompositeOperation = 'screen';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'; // 提高亮度50%
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        
+
         // 增加对比度以显示更多面部细节
         ctx.globalCompositeOperation = 'overlay';
         ctx.fillStyle = 'rgba(128, 128, 128, 0.15)'; // 增加对比度
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        
+
         ctx.globalCompositeOperation = 'source-over'; // 恢复默认混合模式
-        
+
         // Draw simplified face contour
         this.drawBeautifiedFaceContour(ctx, landmarks, canvasWidth, canvasHeight);
-        
+
         // Draw only mouth outline (needed for mouth open detection)
         this.drawBeautifiedMouth(ctx, landmarks, canvasWidth, canvasHeight);
-        
+
         // Skip nose, eyes and eyebrows to reduce CPU usage
         // this.drawBeautifiedNose(ctx, landmarks, canvasWidth, canvasHeight);
         // this.drawBeautifiedEyes(ctx, landmarks, canvasWidth, canvasHeight);
         // this.drawBeautifiedEyebrows(ctx, landmarks, canvasWidth, canvasHeight);
         // this.drawFaceHighlights(ctx, landmarks, canvasWidth, canvasHeight);
     }
-    
+
     // Simplified face highlight effect
     drawFaceHighlights(ctx, landmarks, width, height) {
         // 简化的鼻子高光，减少复杂计算
@@ -625,7 +791,7 @@ class HeadControl {
         if (noseHighlight) {
             const x = noseHighlight.x * width;
             const y = noseHighlight.y * height;
-            
+
             ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.beginPath();
             ctx.arc(x, y, 3, 0, 2 * Math.PI);
@@ -633,77 +799,77 @@ class HeadControl {
         }
         // 移除腮红等复杂效果以减少CPU使用
     }
-    
 
-    
+
+
     // Draw calibration progress
     drawCalibrationProgress(ctx) {
         const progress = this.calibrationFrames / this.maxCalibrationFrames;
         const canvasWidth = ctx.canvas.width;
         const canvasHeight = ctx.canvas.height;
-        
+
         // Draw translucent background
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        
+
         // Responsive calibration box size
         const boxWidth = Math.min(canvasWidth * 0.9, 250);
         const boxHeight = Math.min(canvasHeight * 0.6, 100);
         const boxX = (canvasWidth - boxWidth) / 2;
         const boxY = (canvasHeight - boxHeight) / 2;
-        
+
         // Background box
         ctx.fillStyle = 'rgba(78, 205, 196, 0.2)';
         ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-        
+
         // Border
         ctx.strokeStyle = '#4ecdc4';
         ctx.lineWidth = 2;
         ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-        
+
         // Title
         ctx.fillStyle = '#4ecdc4';
         ctx.font = `bold ${Math.min(16, boxWidth / 15)}px Arial`;
         ctx.textAlign = 'center';
         ctx.fillText('🎯 Calibrating', canvasWidth / 2, boxY + boxHeight * 0.3);
-        
+
         // Progress bar background
         const progressBarWidth = boxWidth * 0.8;
         const progressBarHeight = Math.min(16, boxHeight * 0.2);
         const progressBarX = (canvasWidth - progressBarWidth) / 2;
         const progressBarY = boxY + boxHeight * 0.5;
-        
+
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fillRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
-        
+
         // Progress bar
         const progressWidth = progressBarWidth * progress;
         const gradient = ctx.createLinearGradient(progressBarX, 0, progressBarX + progressWidth, 0);
         gradient.addColorStop(0, '#4ecdc4');
         gradient.addColorStop(1, '#45b7d1');
-        
+
         ctx.fillStyle = gradient;
         ctx.fillRect(progressBarX, progressBarY, progressWidth, progressBarHeight);
-        
+
         // Progress bar边框
         ctx.strokeStyle = '#4ecdc4';
         ctx.lineWidth = 1;
         ctx.strokeRect(progressBarX, progressBarY, progressBarWidth, progressBarHeight);
-        
+
         // Progress percentage
         ctx.fillStyle = '#ffffff';
         ctx.font = `${Math.min(14, boxWidth / 18)}px Arial`;
         ctx.fillText(`${Math.round(progress * 100)}%`, canvasWidth / 2, progressBarY + progressBarHeight - 2);
-        
+
         // Hint text
         ctx.fillStyle = '#ffffff';
         ctx.font = `${Math.min(12, boxWidth / 20)}px Arial`;
         ctx.fillText('Face the camera', canvasWidth / 2, boxY + boxHeight * 0.85);
-        
+
         // Reset text alignment
         ctx.textAlign = 'left';
     }
-    
+
     // Draw calibration complete prompt
     drawCalibrationComplete(ctx) {
         const canvasWidth = ctx.canvas.width;
@@ -746,19 +912,19 @@ class HeadControl {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
     }
-    
+
     // Draw mini status indicator (top-right small icon)
     drawMiniStatus(ctx, landmarks) {
         if (!this.baselineNose || !landmarks) return;
-        
+
         const canvasWidth = ctx.canvas.width;
         const iconSize = 20;
         const spacing = 25;
         let iconX = canvasWidth - 30;
         const iconY = 15;
-        
+
         ctx.font = '16px Arial';
-        
+
         // Tilt status icon
         let tiltIcon = '↔';
         if (this.currentTiltState === 'left') {
@@ -768,16 +934,16 @@ class HeadControl {
         }
         ctx.fillText(tiltIcon, iconX, iconY);
         iconX -= spacing;
-        
-        // 点头状态图标
-        if (this.nodPhase === 'going_down') {
-            ctx.fillText('↓', iconX, iconY);
+
+        // 抬头状态图标
+        if (this.isHeadLiftTriggered) {
+            ctx.fillText('⚡', iconX, iconY); // 闪电表示快速下降激活
             iconX -= spacing;
-        } else if (this.nodPhase === 'completed') {
-            ctx.fillText('⚡', iconX, iconY);
+        } else if (this.isHeadLifted) {
+            ctx.fillText('⬆️', iconX, iconY); // 箭头表示检测到抬头但未触发
             iconX -= spacing;
         }
-        
+
         // Move mode icon
         if (this.isInFastMoveMode) {
             ctx.fillText('⚡', iconX, iconY);
@@ -786,7 +952,7 @@ class HeadControl {
             ctx.fillText('H', iconX, iconY); // Changed from ↻ to H
             iconX -= spacing;
         }
-        
+
         // Mouth status icon
         const upperLip = landmarks[13] || landmarks[12];
         const lowerLip = landmarks[14] || landmarks[15];
@@ -794,13 +960,13 @@ class HeadControl {
             const mouthDistance = Math.abs(upperLip.y - lowerLip.y);
             const mouthOpen = mouthDistance - this.baselineMouth.distance;
             const isMouthOpen = mouthOpen > this.mouthOpenThreshold;
-            
+
             if (isMouthOpen) {
                 ctx.fillText('↻', iconX, iconY);
             }
         }
     }
-    
+
     // Simple brightness adjustment instead of face whitening
     drawFaceFill(ctx, landmarks, width, height) {
         // 简单的亮度提升，不进行复杂的面部美白
@@ -814,7 +980,7 @@ class HeadControl {
     drawBeautifiedFaceContour(ctx, landmarks, width, height) {
         // 简化的面部轮廓，只绘制基本边框
         const faceOval = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
-        
+
         ctx.strokeStyle = 'rgba(78, 205, 196, 0.6)'; // 简单的青色轮廓
         ctx.lineWidth = 1.5;
         ctx.lineCap = 'round';
@@ -835,34 +1001,34 @@ class HeadControl {
         ctx.closePath();
         ctx.stroke();
     }
-    
+
     // Draw beautified eyes
     drawBeautifiedEyes(ctx, landmarks, width, height) {
         // Left eye contour
         const leftEye = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
         // Right eye contour
         const rightEye = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398];
-        
+
         // Draw eye fill
         this.drawEyeFill(ctx, landmarks, leftEye, width, height);
         this.drawEyeFill(ctx, landmarks, rightEye, width, height);
-        
+
         // Draw eye contour - soft outer layer
         ctx.strokeStyle = 'rgba(69, 183, 209, 0.4)';
         ctx.lineWidth = 3;
         this.drawEyeContour(ctx, landmarks, leftEye, width, height);
         this.drawEyeContour(ctx, landmarks, rightEye, width, height);
-        
+
         // Draw eye contour - clear inner layer
         ctx.strokeStyle = '#45b7d1';
         ctx.lineWidth = 1.2;
         this.drawEyeContour(ctx, landmarks, leftEye, width, height);
         this.drawEyeContour(ctx, landmarks, rightEye, width, height);
-        
+
         // Draw beautified pupils
         this.drawBeautifiedPupils(ctx, landmarks, width, height);
     }
-    
+
     // Draw eye fill
     drawEyeFill(ctx, landmarks, eyePoints, width, height) {
         ctx.beginPath();
@@ -879,12 +1045,12 @@ class HeadControl {
             }
         }
         ctx.closePath();
-        
+
         // 眼部白色填充
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.fill();
     }
-    
+
     // 绘制眼部轮廓
     drawEyeContour(ctx, landmarks, eyePoints, width, height) {
         ctx.beginPath();
@@ -903,12 +1069,12 @@ class HeadControl {
         ctx.closePath();
         ctx.stroke();
     }
-    
+
     // Draw beautified pupils
     drawBeautifiedPupils(ctx, landmarks, width, height) {
         const leftPupil = landmarks[468]; // 左眼中心
         const rightPupil = landmarks[473]; // 右眼中心
-        
+
         if (leftPupil) {
             this.drawPupil(ctx, leftPupil.x * width, leftPupil.y * height);
         }
@@ -916,7 +1082,7 @@ class HeadControl {
             this.drawPupil(ctx, rightPupil.x * width, rightPupil.y * height);
         }
     }
-    
+
     // Draw natural blue pupils (referencing Rei Ayanami)
     drawPupil(ctx, x, y) {
         // Iris - natural blue gradient
@@ -925,31 +1091,31 @@ class HeadControl {
         irisGradient.addColorStop(0.5, 'rgba(100, 149, 237, 0.7)'); // Cornflower blue
         irisGradient.addColorStop(0.8, 'rgba(65, 105, 225, 0.6)'); // Royal blue
         irisGradient.addColorStop(1, 'rgba(30, 60, 120, 0.5)'); // Dark blue edge
-        
+
         ctx.fillStyle = irisGradient;
         ctx.beginPath();
         ctx.arc(x, y, 6, 0, 2 * Math.PI);
         ctx.fill();
-        
+
         // Pupil
         ctx.fillStyle = 'rgba(20, 20, 60, 0.9)'; // Dark pupil
         ctx.beginPath();
         ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
         ctx.fill();
-        
+
         // Natural highlight
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
         ctx.arc(x - 1, y - 1, 1.2, 0, 2 * Math.PI);
         ctx.fill();
-        
+
         // Secondary highlight
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.beginPath();
         ctx.arc(x + 1.5, y + 1.5, 0.6, 0, 2 * Math.PI);
         ctx.fill();
     }
-    
+
     // Draw beautified mouth
     drawBeautifiedMouth(ctx, landmarks, width, height) {
         // 使用与游戏检测相同的关键点
@@ -957,37 +1123,37 @@ class HeadControl {
         const rightCorner = landmarks[291]; // 右嘴角
         const upperLip = landmarks[13];     // 上唇中心（与游戏检测一致）
         const lowerLip = landmarks[14];     // 下唇中心（与游戏检测一致）
-        
+
         if (leftCorner && rightCorner && upperLip && lowerLip && this.baselineMouth) {
             // 计算嘴部中心点
             const centerX = ((leftCorner.x + rightCorner.x) / 2) * width;
             const centerY = ((upperLip.y + lowerLip.y) / 2) * height;
-            
+
             // 计算嘴部宽度
             const mouthWidth = Math.abs(rightCorner.x - leftCorner.x) * width;
-            
+
             // 使用与游戏检测完全相同的逻辑判断嘴部是否张开
             const mouthDistance = Math.abs(upperLip.y - lowerLip.y);
             const mouthOpen = mouthDistance - this.baselineMouth.distance;
             const isMouthOpen = mouthOpen > this.mouthOpenThreshold;
-            
+
             // 设置绘制样式
             ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)'; // 红色轮廓
             ctx.lineWidth = 2;
             ctx.lineCap = 'round';
-            
+
             if (!isMouthOpen) {
                 // 嘴部闭合时：绘制贴合下嘴唇的轻微弧线
                 const smileWidth = mouthWidth * 0.7; // 缩短长度到70%
                 const smileHeight = 1; // 降低弧度高度到1像素
                 const lowerLipY = lowerLip.y * height; // 贴合下嘴唇位置
-                
+
                 ctx.beginPath();
                 // 绘制轻微弧线：贴合下嘴唇，只是稍微弯曲
                 ctx.moveTo(centerX - smileWidth / 2, lowerLipY);
                 ctx.quadraticCurveTo(centerX, lowerLipY + smileHeight, centerX + smileWidth / 2, lowerLipY);
                 ctx.stroke();
-                
+
                 // 在嘴角添加小点，位置也调整到下嘴唇
                 ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
                 ctx.beginPath();
@@ -997,11 +1163,11 @@ class HeadControl {
             } else {
                 // 嘴部张开时：绘制椭圆
                 const mouthHeight = Math.abs(lowerLip.y - upperLip.y) * height;
-                
+
                 ctx.beginPath();
                 ctx.ellipse(centerX, centerY, mouthWidth / 2, mouthHeight / 2, 0, 0, 2 * Math.PI);
                 ctx.stroke();
-                
+
                 // 如果嘴张得很大，添加内部轮廓
                 if (mouthOpen > this.mouthOpenThreshold * 2) {
                     ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
@@ -1018,7 +1184,7 @@ class HeadControl {
             const smileWidth = mouthWidth * 0.7;
             const smileHeight = 1;
             const lowerLipY = lowerLip.y * height; // 贴合下嘴唇位置
-            
+
             ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
             ctx.lineWidth = 1;
             ctx.lineCap = 'round';
@@ -1029,12 +1195,12 @@ class HeadControl {
             ctx.stroke();
         }
     }
-    
+
     // Draw beautified nose
     drawBeautifiedNose(ctx, landmarks, width, height) {
         // Nose bridge
         const noseBridge = [6, 8, 9, 10, 151];
-        
+
         // Nose bridge外层光晕
         ctx.strokeStyle = 'rgba(255, 165, 0, 0.3)';
         ctx.lineWidth = 3;
@@ -1052,7 +1218,7 @@ class HeadControl {
             }
         }
         ctx.stroke();
-        
+
         // Nose bridge内层线条
         ctx.strokeStyle = 'rgba(255, 165, 0, 0.7)';
         ctx.lineWidth = 1;
@@ -1070,35 +1236,35 @@ class HeadControl {
             }
         }
         ctx.stroke();
-        
+
         // Nose tip highlight
         const noseTip = landmarks[1];
         if (noseTip) {
             const x = noseTip.x * width;
             const y = noseTip.y * height;
-            
+
             // Outer halo
             const gradient = ctx.createRadialGradient(x, y, 0, x, y, 6);
             gradient.addColorStop(0, 'rgba(255, 165, 0, 0.6)');
             gradient.addColorStop(0.7, 'rgba(255, 165, 0, 0.3)');
             gradient.addColorStop(1, 'rgba(255, 165, 0, 0.1)');
-            
+
             ctx.fillStyle = gradient;
             ctx.beginPath();
             ctx.arc(x, y, 6, 0, 2 * Math.PI);
             ctx.fill();
-            
+
             // Inner highlight
             ctx.fillStyle = 'rgba(255, 200, 100, 0.8)';
             ctx.beginPath();
             ctx.arc(x, y, 2, 0, 2 * Math.PI);
             ctx.fill();
         }
-        
+
         // Nostrils - more natural color
         const leftNostril = landmarks[220];
         const rightNostril = landmarks[305];
-        
+
         if (leftNostril) {
             this.drawNostril(ctx, leftNostril.x * width, leftNostril.y * height);
         }
@@ -1106,7 +1272,7 @@ class HeadControl {
             this.drawNostril(ctx, rightNostril.x * width, rightNostril.y * height);
         }
     }
-    
+
     // Draw nostrils
     drawNostril(ctx, x, y) {
         // Outer shadow
@@ -1114,27 +1280,27 @@ class HeadControl {
         ctx.beginPath();
         ctx.arc(x, y, 3, 0, 2 * Math.PI);
         ctx.fill();
-        
+
         // Inner nostril
         ctx.fillStyle = 'rgba(139, 69, 19, 0.6)';
         ctx.beginPath();
         ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
         ctx.fill();
     }
-    
+
     // Draw beautified eyebrows
     drawBeautifiedEyebrows(ctx, landmarks, width, height) {
         // Left eyebrow key points
         const leftEyebrow = [46, 53, 52, 51, 48];
         // Right eyebrow key points
         const rightEyebrow = [276, 283, 282, 295, 285];
-        
+
         // Draw left eyebrow
         this.drawEyebrow(ctx, landmarks, leftEyebrow, width, height);
         // Draw right eyebrow
         this.drawEyebrow(ctx, landmarks, rightEyebrow, width, height);
     }
-    
+
     // Draw single eyebrow
     drawEyebrow(ctx, landmarks, eyebrowPoints, width, height) {
         // Outer halo
@@ -1142,7 +1308,7 @@ class HeadControl {
         ctx.lineWidth = 4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        
+
         ctx.beginPath();
         for (let i = 0; i < eyebrowPoints.length; i++) {
             const point = landmarks[eyebrowPoints[i]];
@@ -1157,11 +1323,11 @@ class HeadControl {
             }
         }
         ctx.stroke();
-        
+
         // Inner eyebrow
         ctx.strokeStyle = 'rgba(101, 67, 33, 0.8)';
         ctx.lineWidth = 2;
-        
+
         ctx.beginPath();
         for (let i = 0; i < eyebrowPoints.length; i++) {
             const point = landmarks[eyebrowPoints[i]];
@@ -1176,27 +1342,27 @@ class HeadControl {
             }
         }
         ctx.stroke();
-        
+
         // Eyebrow hair effect
         ctx.strokeStyle = 'rgba(139, 69, 19, 0.6)';
         ctx.lineWidth = 0.8;
-        
+
         for (let i = 0; i < eyebrowPoints.length - 1; i++) {
             const point1 = landmarks[eyebrowPoints[i]];
             const point2 = landmarks[eyebrowPoints[i + 1]];
-            
+
             if (point1 && point2) {
                 const x1 = point1.x * width;
                 const y1 = point1.y * height;
                 const x2 = point2.x * width;
                 const y2 = point2.y * height;
-                
+
                 // Draw a few hair lines
                 for (let j = 0; j < 3; j++) {
                     const t = j / 2;
                     const x = x1 + (x2 - x1) * t;
                     const y = y1 + (y2 - y1) * t;
-                    
+
                     ctx.beginPath();
                     ctx.moveTo(x, y);
                     ctx.lineTo(x + (Math.random() - 0.5) * 4, y - 2 - Math.random() * 3);
@@ -1205,7 +1371,7 @@ class HeadControl {
             }
         }
     }
-    
+
     drawControlStatus(ctx, landmarks) {
         if (!this.baselineNose || !landmarks) return;
 
@@ -1232,11 +1398,31 @@ class HeadControl {
         }
         items.push({ text: `${tiltIcon} Tilt`, color: tiltColor });
 
-        // 2. Nod Status
-        if (this.nodPhase === 'going_down') {
-            items.push({ text: '↓ Nodding', color: '#ffcc00' });
-        } else if (this.nodPhase === 'completed') {
-            items.push({ text: '⚡ Fast Drop', color: '#ff6b6b' });
+        // 2. Head Lift Status (based on nose-mouth distance)
+        if (this.isHeadLiftTriggered) {
+            items.push({ text: '⚡ Fast Drop Active', color: '#ff6b6b' });
+        } else if (this.isHeadLifted) {
+            const elapsed = Date.now() - this.headLiftStartTime;
+            const remaining = Math.max(0, this.headLiftTriggerDelay - elapsed);
+            items.push({ text: `⬆️ Head Lifted (${(remaining / 1000).toFixed(1)}s)`, color: '#ffcc00' });
+        }
+
+        // Distance Ratio Debug Info
+        if (this.initialEyeMouthDistance && this.currentEyeMouthDistance) {
+            const ratio = this.currentEyeMouthDistance / this.initialEyeMouthDistance;
+            const percentage = (ratio * 100).toFixed(1);
+            const triggerThreshold = (this.headLiftThreshold * 100).toFixed(0);
+            const cancelThreshold = (this.headLiftCancelThreshold * 100).toFixed(0);
+
+            // Show more detailed status
+            let statusText = `Eye-Mouth: ${percentage}% (T:${triggerThreshold}%/C:${cancelThreshold}%)`;
+            if (ratio < this.headLiftThreshold) {
+                statusText += ' [SHOULD TRIGGER]';
+            }
+
+            items.push({ text: statusText, color: '#888888' });
+        } else if (this.eyeMouthDistanceHistory.length > 0) {
+            items.push({ text: `Waiting for baseline... (${this.eyeMouthDistanceHistory.length}/5)`, color: '#ffcc00' });
         }
 
         // 3. Mouth Status
@@ -1278,46 +1464,44 @@ class HeadControl {
             ctx.fillText(item.text, statusX + padding, statusY + padding + (index * lineHeight));
         });
     }
-    
-    resetDropSpeed() {
-        // Nod is an instantaneous action, no need to reset continuous state
-        this.nodPhase = 'waiting';
-        this.nodStartTime = 0;
-    }
-    
-    updateSensitivity(tiltThreshold, nodThreshold, mouthThreshold) {
+
+
+
+    updateSensitivity(tiltThreshold, headLiftThreshold, mouthThreshold) {
         this.headTiltThreshold = tiltThreshold;
-        this.nodThreshold = nodThreshold;
+        // Convert old distance threshold to angle threshold (approximate conversion)
+        this.headLiftAngleThreshold = headLiftThreshold * 300; // Scale factor to convert to degrees
+        this.headLiftThreshold = headLiftThreshold; // Keep for backward compatibility
         this.mouthOpenThreshold = mouthThreshold;
-        
+
         // 根据倾斜灵敏度调整移动速度
         // 灵敏度越高(数值越小)，移动越快
         const baseContinuousInterval = 150;
         const baseFastInterval = 90;
-        
+
         // 灵敏度范围 0.05-0.30，反向映射到速度
         const sensitivityFactor = (0.30 - tiltThreshold) / (0.30 - 0.05); // 0-1范围
-        
+
         // 灵敏度高时速度快，灵敏度低时速度慢
         this.continuousMoveInterval = Math.max(50, baseContinuousInterval - (sensitivityFactor * 100));
         this.fastMoveInterval = Math.max(30, baseFastInterval - (sensitivityFactor * 60));
-        
-        console.log(`灵敏度更新: 倾斜=${tiltThreshold}, 点头=${nodThreshold}, 张嘴=${mouthThreshold}`);
+
+        console.log(`灵敏度更新: 左右倾斜=${tiltThreshold}, 抬头角度=${this.headLiftAngleThreshold.toFixed(1)}°, 张嘴=${mouthThreshold}, 垂直度阈值=${this.headVerticalThreshold}°`);
         console.log(`移动速度: 连续=${this.continuousMoveInterval}ms, 快速=${this.fastMoveInterval}ms`);
     }
-    
+
     stop() {
         if (this.camera) {
             this.camera.stop();
         }
-        
+
         const video = document.getElementById('input_video');
         if (video && video.srcObject) {
             const tracks = video.srcObject.getTracks();
             tracks.forEach(track => track.stop());
             video.srcObject = null;
         }
-        
+
         this.isActive = false;
         this.resetCalibration();
     }

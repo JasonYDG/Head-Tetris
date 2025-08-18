@@ -112,8 +112,12 @@ class MobileDetection {
             const displayWidth = parseFloat(computedStyle.width);
             const displayHeight = parseFloat(computedStyle.height);
             
-            nextCanvas.width = displayWidth;
-            nextCanvas.height = displayHeight;
+            // 确保内部绘制尺寸是正方形，使用较小的尺寸
+            const size = Math.min(displayWidth, displayHeight);
+            nextCanvas.width = size;
+            nextCanvas.height = size;
+            
+            console.log(`Next canvas set to: ${size}x${size} (display: ${displayWidth}x${displayHeight})`);
         }
     }
     
