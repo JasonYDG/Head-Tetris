@@ -17,7 +17,7 @@ class HeadControl {
 
         // Debounce parameters
         this.lastAction = '';
-        this.actionCooldown = 300;
+        this.actionCooldown = 150; // Reduced from 300ms to 150ms for faster response
         this.lastActionTime = 0;
 
         // Left/right movement state tracking
@@ -43,18 +43,18 @@ class HeadControl {
         this.fastMoveStartTime = 0;
 
         // Fast movement detection (large tilt)
-        this.fastMoveThreshold = 0.22;
-        this.fastMoveInterval = 90;
+        this.fastMoveThreshold = 0.30; // Increased from 0.22 to 0.30 to avoid accidental triggers
+        this.fastMoveInterval = 40;
 
         // Head lift detection using head pitch angle (more accurate)
         this.headLiftAngleThreshold = 5; // Degrees - head pitch angle threshold for fast drop (lowered for easier trigger)
-        this.headLiftThreshold = 0.50; // Backup: Ratio threshold (when eye-mouth distance < 50% of initial)
-        this.headLiftCancelThreshold = 0.50; // Cancel threshold (when distance >= 50% of initial)
+        this.headLiftThreshold = 0.74; // Ratio threshold (when eye-mouth distance < 74% of initial)
+        this.headLiftCancelThreshold = 0.74; // Cancel threshold (when distance >= 74% of initial)
         this.headVerticalThreshold = 45; // Degrees - maximum head tilt angle to allow fast drop (only prevent when extremely tilted)
         this.isHeadLifted = false; // Current head lift state (for display)
         this.isHeadLiftTriggered = false; // Whether fast drop is actually triggered
         this.headLiftStartTime = 0; // When head lift started
-        this.headLiftTriggerDelay = 0; // No delay - immediate trigger
+        this.headLiftTriggerDelay = 500; // 0.5 second delay before triggering
         this.lastFastDropTime = 0;
         this.fastDropInterval = 80; // Fixed fast drop interval (80ms = 12.5 drops per second)
         this.currentPieceId = null; // Track current piece to reset on new piece
@@ -390,6 +390,8 @@ class HeadControl {
         this.currentEyeMouthDistance = null;
         this.isHeadLifted = false;
         this.isHeadLiftTriggered = false;
+        this.headLiftStartTime = 0;
+        this.fastDropPieceId = null; // Track which piece has fast drop active
         this.currentPieceId = null;
 
         // Reset face detection status
@@ -504,14 +506,22 @@ class HeadControl {
 
             // Execute action
             if (action) {
-                if (action === 'rotate' || action !== this.lastAction) {
+                // Allow continuous/fast movement to bypass action cooldown
+                const isContinuousMove = this.isInContinuousMode || this.isInFastMoveMode;
+                const shouldExecute = action === 'rotate' || action !== this.lastAction || isContinuousMove;
+                
+                if (shouldExecute) {
                     this.executeAction(action);
-                    this.lastAction = action;
-                    this.lastActionTime = now;
+                    
+                    // Only apply cooldown for non-continuous actions
+                    if (!isContinuousMove) {
+                        this.lastAction = action;
+                        this.lastActionTime = now;
 
-                    setTimeout(() => {
-                        this.lastAction = '';
-                    }, this.actionCooldown);
+                        setTimeout(() => {
+                            this.lastAction = '';
+                        }, this.actionCooldown);
+                    }
                 }
             }
         } catch (error) {
@@ -556,21 +566,23 @@ class HeadControl {
         this.frameCounter++;
 
         if (this.frameCounter % 30 === 0) {
-            console.log(`[距离] 当前额头-下巴距离: ${foreheadChinDistance.toFixed(4)}, 基准: ${this.baselineForeheadChinDistance.toFixed(4)}, 比例: ${(distanceRatio * 100).toFixed(1)}%, 阈值: 85%, 快速下降: ${this.isHeadLiftTriggered ? '开启' : '关闭'}`);
+            console.log(`[距离] 当前额头-下巴距离: ${foreheadChinDistance.toFixed(4)}, 基准: ${this.baselineForeheadChinDistance.toFixed(4)}, 比例: ${(distanceRatio * 100).toFixed(1)}%, 阈值: 74%, 快速下降: ${this.isHeadLiftTriggered ? '开启' : '关闭'}`);
         }
 
         // Track current piece ID
         if (this.tetrisGame.currentPiece && this.currentPieceId !== this.tetrisGame.currentPiece.id) {
+            const oldId = this.currentPieceId;
             this.currentPieceId = this.tetrisGame.currentPiece.id;
+            console.log(`[方块变化] ${oldId} -> ${this.currentPieceId}, 快速下降方块: ${this.fastDropPieceId}`);
         }
 
         // Check if head is severely tilted (face not vertical)
         const headTiltAngle = this.calculateHeadTiltAngle(landmarks);
         const isHeadSeverelyTilted = headTiltAngle !== null && Math.abs(headTiltAngle) > this.headVerticalThreshold;
 
-        // When head lifts up, forehead-chin distance becomes shorter (< 85% of baseline)
+        // When head lifts up, forehead-chin distance becomes shorter (< 74% of baseline)
         // But only trigger if head is not severely tilted
-        const isCurrentlyLifted = distanceRatio < 0.85 && !isHeadSeverelyTilted;
+        const isCurrentlyLifted = distanceRatio < 0.74 && !isHeadSeverelyTilted;
 
         // Debug logging for head tilt (more frequent for testing)
         if (this.frameCounter % 15 === 0 && headTiltAngle !== null) {
@@ -578,26 +590,66 @@ class HeadControl {
         }
 
         // Detect head lift state changes
-        if (isCurrentlyLifted && !this.isHeadLiftTriggered) {
-            // Head just lifted - immediate trigger
-            this.isHeadLifted = true;
-            this.isHeadLiftTriggered = true;
-            this.lastFastDropTime = 0; // Reset to allow immediate first drop
-            console.log(`[触发] 额头-下巴距离缩短到 ${(distanceRatio * 100).toFixed(1)}% < 85%，头部垂直，立即开始快速下降`);
-        } else if (!isCurrentlyLifted && this.isHeadLiftTriggered) {
-            // Head lowered or tilted - immediate stop
+        const currentPieceId = this.tetrisGame.currentPiece ? this.tetrisGame.currentPiece.id : null;
+
+        if (isCurrentlyLifted) {
+            if (!this.isHeadLifted) {
+                // Head just lifted - start timing
+                this.isHeadLifted = true;
+                this.headLiftStartTime = now;
+                console.log(`[检测] 额头-下巴距离缩短到 ${(distanceRatio * 100).toFixed(1)}% < 74%，开始计时 0.5秒`);
+                console.log(`[状态] 游戏运行: ${this.tetrisGame.gameRunning}, 当前方块ID: ${currentPieceId}`);
+            } else if (!this.isHeadLiftTriggered) {
+                // Head still lifted - check if delay has passed
+                const elapsed = now - this.headLiftStartTime;
+                const remaining = Math.max(0, this.headLiftTriggerDelay - elapsed);
+                console.log(`[等待] 倒计时: ${(remaining / 1000).toFixed(1)}秒`);
+
+                if (elapsed >= this.headLiftTriggerDelay) {
+                    // Check if we have a valid piece and it's not already triggered
+                    if (currentPieceId && currentPieceId !== this.fastDropPieceId) {
+                        // Can trigger fast drop for this piece
+                        this.isHeadLiftTriggered = true;
+                        this.fastDropPieceId = currentPieceId;
+                        this.lastFastDropTime = 0; // Reset to allow immediate first drop
+                        console.log(`[触发] 快速下降激活！方块ID: ${currentPieceId}`);
+                    } else if (currentPieceId === this.fastDropPieceId) {
+                        console.log(`[跳过] 当前方块(${currentPieceId})已经触发过快速下降`);
+                    } else {
+                        console.log(`[错误] 无效的方块ID: ${currentPieceId}`);
+                    }
+                }
+            }
+        } else {
+            // Head lowered or tilted - reset detection state but keep fast drop active
+            if (this.isHeadLifted) {
+                const reason = isHeadSeverelyTilted ? '头部严重倾斜' : '距离恢复';
+                console.log(`[停止检测] ${reason}，但快速下降继续 (距离: ${(distanceRatio * 100).toFixed(1)}%)`);
+            }
             this.isHeadLifted = false;
-            this.isHeadLiftTriggered = false;
-            const reason = isHeadSeverelyTilted ? '头部严重倾斜' : '距离恢复';
-            console.log(`[停止] ${reason}，立即停止快速下降 (距离: ${(distanceRatio * 100).toFixed(1)}%, 倾斜: ${headTiltAngle ? headTiltAngle.toFixed(1) + '°' : 'N/A'})`);
+            this.headLiftStartTime = 0;
+            // 注意：不重置 isHeadLiftTriggered，让快速下降继续到方块放置
         }
 
         // Continuous fast drop while head lift is triggered
-        if (this.isHeadLiftTriggered && this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
-            if (now - this.lastFastDropTime >= this.fastDropInterval) {
-                this.triggerContinuousDrop();
-                this.lastFastDropTime = now;
-                console.log(`[执行] 快速下降 - 距离比例: ${(distanceRatio * 100).toFixed(1)}%`);
+        if (this.isHeadLiftTriggered) {
+            const currentPieceId = this.tetrisGame.currentPiece ? this.tetrisGame.currentPiece.id : null;
+            
+            // 检查当前方块是否是触发快速下降的方块
+            if (currentPieceId !== this.fastDropPieceId) {
+                console.log(`[停止] 方块已变化，停止快速下降 - 触发方块: ${this.fastDropPieceId}, 当前方块: ${currentPieceId}`);
+                this.isHeadLiftTriggered = false;
+                this.fastDropPieceId = null;
+            } else if (this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
+                if (now - this.lastFastDropTime >= this.fastDropInterval) {
+                    const success = this.triggerContinuousDrop();
+                    this.lastFastDropTime = now;
+                    if (success) {
+                        console.log(`[执行] 快速下降成功 - 方块ID: ${currentPieceId}`);
+                    }
+                }
+            } else {
+                console.log(`[警告] 快速下降激活但游戏未运行或无方块 - 游戏运行: ${this.tetrisGame.gameRunning}, 方块存在: ${!!this.tetrisGame.currentPiece}`);
             }
         }
 
@@ -608,15 +660,27 @@ class HeadControl {
     triggerContinuousDrop() {
         if (this.tetrisGame.gameRunning && this.tetrisGame.currentPiece) {
             // 尝试下降一格，如果失败也不停止（让游戏自己处理方块放置）
-            this.tetrisGame.movePiece(0, 1);
+            const success = this.tetrisGame.movePiece(0, 1);
+            return success;
         }
+        return false;
     }
 
     // Reset drop speed when piece is placed (called from game)
     resetDropSpeed() {
-        // 不重置快速下降状态，让它持续到用户放下头部
+        // 重置快速下降状态，新方块需要重新触发
+        const wasTriggered = this.isHeadLiftTriggered;
+        const oldPieceId = this.fastDropPieceId;
+        
+        this.isHeadLiftTriggered = false;
+        this.fastDropPieceId = null;
         this.currentPieceId = null;
-        console.log('方块放置，快速下降状态继续');
+        
+        // 同时重置头部抬起检测状态，确保新方块需要重新触发
+        this.isHeadLifted = false;
+        this.headLiftStartTime = 0;
+
+        console.log(`[重置] 快速下降状态重置 - 之前触发: ${wasTriggered}, 方块ID: ${oldPieceId} -> null`);
     }
 
     // Calculate distance between nose tip and mouth center
@@ -1477,7 +1541,7 @@ class HeadControl {
         // 根据倾斜灵敏度调整移动速度
         // 灵敏度越高(数值越小)，移动越快
         const baseContinuousInterval = 150;
-        const baseFastInterval = 90;
+        const baseFastInterval = 40;
 
         // 灵敏度范围 0.05-0.30，反向映射到速度
         const sensitivityFactor = (0.30 - tiltThreshold) / (0.30 - 0.05); // 0-1范围

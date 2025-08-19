@@ -555,12 +555,13 @@ class TetrisGame {
         if (!this.movePiece(0, 1)) {
             this.placePiece();
             this.clearLines();
-            this.spawnPiece();
             
-            // 通知方块已落地，重置加速状态
+            // 通知方块已落地，重置加速状态（在生成新方块之前）
             if (this.onPiecePlaced) {
                 this.onPiecePlaced();
             }
+            
+            this.spawnPiece();
         }
     }
     
@@ -958,17 +959,17 @@ class TetrisGame {
         this.totalPieceCount = 0;
         this.lastIPieceIndex = -10;
         
+        // 通知重置下降速度（在生成新方块之前）
+        if (this.onPiecePlaced) {
+            this.onPiecePlaced();
+        }
+        
         this.generateNextPiece();
         this.spawnPiece();
         this.updateScore();
         // 移除HTML audio背景音乐控制，由Web Audio API处理
         document.body.classList.remove('game-active');
         this.draw();
-        
-        // 通知重置下降速度
-        if (this.onPiecePlaced) {
-            this.onPiecePlaced();
-        }
     }
     
     update() {

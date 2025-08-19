@@ -44,7 +44,7 @@ An innovative Tetris game controlled by your head movements via webcam, complete
 | :--- | :--- | :--- |
 | **Tilt Head Left/Right** | Move block left/right | A slight tilt is enough; supports continuous movement. |
 | **Open Mouth** | Rotate block | A quick, clear motion is recognized accurately. |
-| **Lift Head Up** | Continuous fast drop | Lift head to reduce eye-mouth distance for continuous fast descent. |
+| **Lift Head Up** | Continuous fast drop | Lift head to reduce eye-mouth distance below 74% and hold for 0.5s to trigger fast descent for current block only. |
 
 ### Keyboard Control (Alternative)
 - **←** / **→** : Move Left / Right
@@ -97,7 +97,7 @@ To adjust control sensitivity, you can modify the following parameters in `head-
 this.headTiltThreshold = 0.15;  // Head tilt sensitivity
 this.headLiftThreshold = 0.05;  // Head lift sensitivity
 this.mouthOpenThreshold = 0.02; // Mouth open sensitivity
-this.actionCooldown = 300;      // Cooldown between actions (in ms)
+this.actionCooldown = 150;      // Cooldown between actions (in ms)
 ```
 
 ---

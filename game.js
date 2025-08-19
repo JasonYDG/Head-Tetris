@@ -979,7 +979,7 @@ function createBackgroundMusic() {
                 this.audioContext = getAudioContext();
                 this.gainNode = this.audioContext.createGain();
                 this.gainNode.connect(this.audioContext.destination);
-                this.gainNode.gain.setValueAtTime(0.08, this.audioContext.currentTime);
+                this.gainNode.gain.setValueAtTime(0.25, this.audioContext.currentTime);
                 console.log('BGM initialized');
                 
             } catch (error) {
@@ -1013,6 +1013,12 @@ function createBackgroundMusic() {
         
         startPlaying() {
             if (this.isPlaying) return;
+            
+            // 确保音量设置正确（防止屏幕唤醒后音量丢失）
+            if (this.gainNode) {
+                this.gainNode.gain.setValueAtTime(0.25, this.audioContext.currentTime);
+                console.log('BGM volume set to 0.25');
+            }
             
             this.isPlaying = true;
             this.playCurrentMelody();
@@ -1131,8 +1137,8 @@ function createBackgroundMusic() {
                 oscillator.type = 'square';
                 
                 noteGain.gain.setValueAtTime(0, currentTime);
-                noteGain.gain.linearRampToValueAtTime(0.06, currentTime + 0.01);
-                noteGain.gain.exponentialRampToValueAtTime(0.01, currentTime + note.duration);
+                noteGain.gain.linearRampToValueAtTime(0.15, currentTime + 0.01); // Increased from 0.06 to 0.15
+                noteGain.gain.exponentialRampToValueAtTime(0.02, currentTime + note.duration); // Increased from 0.01 to 0.02
                 
                 oscillator.start(currentTime);
                 oscillator.stop(currentTime + note.duration);
@@ -1151,8 +1157,8 @@ function createBackgroundMusic() {
                     harmonyOsc.type = 'triangle';
                     
                     harmonyGain.gain.setValueAtTime(0, currentTime);
-                    harmonyGain.gain.linearRampToValueAtTime(0.03, currentTime + 0.01);
-                    harmonyGain.gain.exponentialRampToValueAtTime(0.005, currentTime + note.duration);
+                    harmonyGain.gain.linearRampToValueAtTime(0.08, currentTime + 0.01); // Increased from 0.03 to 0.08
+                    harmonyGain.gain.exponentialRampToValueAtTime(0.015, currentTime + note.duration); // Increased from 0.005 to 0.015
                     
                     harmonyOsc.start(currentTime);
                     harmonyOsc.stop(currentTime + note.duration);
@@ -1279,6 +1285,72 @@ window.addEventListener('orientationchange', () => {
         }
     }, 100);
 });
+
+// 页面可见性变化监听器 - 处理屏幕唤醒后的音频恢复
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        // 页面变为可见（屏幕唤醒）
+        console.log('Page became visible, checking audio context...');
+        
+        setTimeout(() => {
+            // 恢复全局音频上下文
+            const audioContext = getAudioContext();
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log('Audio context resumed after screen wake up');
+                }).catch(err => {
+                    console.warn('Failed to resume audio context after screen wake up:', err);
+                });
+            }
+            
+            // 恢复BGM音频上下文和音量
+            if (window.bgmControl && window.bgmControl.isOn) {
+                if (window.bgmControl.audioContext && window.bgmControl.audioContext.state === 'suspended') {
+                    window.bgmControl.audioContext.resume().then(() => {
+                        console.log('BGM audio context resumed after screen wake up');
+                        
+                        // 重新设置BGM音量，防止音量丢失
+                        if (window.bgmControl.gainNode) {
+                            window.bgmControl.gainNode.gain.setValueAtTime(0.25, window.bgmControl.audioContext.currentTime);
+                            console.log('BGM volume restored to 0.25');
+                        }
+                        
+                        // 如果BGM应该播放但没有播放，重新启动
+                        if (!window.bgmControl.isPlaying) {
+                            console.log('Restarting BGM after screen wake up');
+                            window.bgmControl.start();
+                        }
+                    }).catch(err => {
+                        console.warn('Failed to resume BGM audio context after screen wake up:', err);
+                    });
+                } else if (window.bgmControl.gainNode) {
+                    // 即使音频上下文没有暂停，也重新设置音量
+                    window.bgmControl.gainNode.gain.setValueAtTime(0.25, window.bgmControl.audioContext.currentTime);
+                    console.log('BGM volume restored to 0.25 (context was not suspended)');
+                }
+            }
+        }, 100); // 短暂延迟确保页面完全激活
+    }
+});
+
+// 鼠标点击监听器 - 作为音频恢复的额外触发机制
+document.addEventListener('click', function() {
+    // 检查并恢复音频上下文
+    const audioContext = getAudioContext();
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('Audio context resumed by user click');
+        }).catch(err => {
+            console.warn('Failed to resume audio context by user click:', err);
+        });
+    }
+    
+    // 检查并恢复BGM
+    if (window.bgmControl && window.bgmControl.isOn && window.bgmControl.gainNode) {
+        // 重新设置BGM音量
+        window.bgmControl.gainNode.gain.setValueAtTime(0.25, window.bgmControl.audioContext.currentTime);
+    }
+}, { once: false }); // 不使用once，允许多次触发
 
 // 初始设置
 setViewportHeight();
