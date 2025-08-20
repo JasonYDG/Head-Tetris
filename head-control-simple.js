@@ -65,6 +65,11 @@ class HeadControl {
         this.initialEyeMouthDistance = null; // Initial distance when calibration completes
         this.currentEyeMouthDistance = null;
 
+        // Face detection stability tracking
+        this.faceDetectionFailureCount = 0;
+        this.maxFailureCount = 10; // Allow 10 consecutive failures before showing warning
+        this.lastSuccessfulDetection = Date.now();
+
         // Status display control
         this.showDetailedStatus = true; // Can be set to false to show mini status
 
@@ -161,15 +166,29 @@ class HeadControl {
                 };
             });
 
+            // Monitor video stream status
+            video.addEventListener('ended', () => {
+                console.warn('Video stream ended unexpectedly');
+                this.handleStreamInterruption();
+            });
+
+            video.addEventListener('error', (e) => {
+                console.error('Video stream error:', e);
+                this.handleStreamInterruption();
+            });
+
             // Create MediaPipe Camera
             this.camera = new Camera(video, {
                 onFrame: async () => {
                     try {
-                        if (this.faceMesh && video.readyState === 4) {
+                        if (this.faceMesh && video.readyState === 4 && !video.paused && !video.ended) {
                             await this.faceMesh.send({ image: video });
+                        } else if (video.readyState !== 4) {
+                            console.warn('Video not ready, readyState:', video.readyState);
                         }
                     } catch (error) {
                         console.error('Frame processing error:', error);
+                        // Don't throw error, just log it to prevent breaking the camera loop
                     }
                 },
                 width: 320,
@@ -234,7 +253,10 @@ class HeadControl {
             }
 
             if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                this.isFaceDetected = true; // Face detected
+                // Face detected successfully
+                this.faceDetectionFailureCount = 0;
+                this.lastSuccessfulDetection = Date.now();
+                this.isFaceDetected = true;
                 const landmarks = results.multiFaceLandmarks[0];
 
                 // Draw face landmarks every frame
@@ -273,17 +295,34 @@ class HeadControl {
                     this.drawMiniStatus(ctx, landmarks);
                 }
             } else {
-                // No face detected
-                // Draw "Please face the camera" message
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // No face detected - increment failure count
+                this.faceDetectionFailureCount++;
 
-                ctx.fillStyle = '#ff6b6b'; // Red color for warning
-                ctx.font = 'bold 18px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+                // Only show warning after consecutive failures (avoid flickering)
+                if (this.faceDetectionFailureCount >= this.maxFailureCount) {
+                    this.isFaceDetected = false;
 
-                ctx.fillText('Please face the camera', canvas.width / 2, canvas.height / 2);
+                    // Draw "Please face the camera" message
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    ctx.fillStyle = '#ff6b6b'; // Red color for warning
+                    ctx.font = 'bold 18px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    const timeSinceLastDetection = Date.now() - this.lastSuccessfulDetection;
+                    if (timeSinceLastDetection > 5000) { // 5 seconds
+                        ctx.fillText('Face detection lost', canvas.width / 2, canvas.height / 2 - 10);
+                        ctx.font = '12px Arial';
+                        ctx.fillText('Try adjusting lighting or position', canvas.width / 2, canvas.height / 2 + 15);
+                    } else {
+                        ctx.fillText('Please face the camera', canvas.width / 2, canvas.height / 2);
+                    }
+                } else {
+                    // Still in grace period, keep previous detection status
+                    // Don't change this.isFaceDetected yet
+                }
             }
             // Check if status changed and notify
             if (this.isFaceDetected !== this.lastFaceDetectionStatus) {
@@ -295,6 +334,9 @@ class HeadControl {
         } catch (error) {
             console.error('onResults processing error:', error);
 
+            // Increment failure count on processing errors
+            this.faceDetectionFailureCount++;
+
             // If it's a WebGL error, try to continue with basic functionality
             if (error.message && error.message.includes('WebGL')) {
                 console.log('WebGL error detected, continuing with basic face detection...');
@@ -303,6 +345,10 @@ class HeadControl {
                 if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                     try {
                         const landmarks = results.multiFaceLandmarks[0];
+
+                        // Reset failure count if we can process landmarks
+                        this.faceDetectionFailureCount = 0;
+                        this.lastSuccessfulDetection = Date.now();
 
                         // Skip drawing, just do detection
                         if (this.calibrationFrames < this.maxCalibrationFrames) {
@@ -316,8 +362,16 @@ class HeadControl {
                         }
                     } catch (detectionError) {
                         console.error('Face detection error:', detectionError);
+                        this.faceDetectionFailureCount++;
                     }
                 }
+            }
+
+            // If too many consecutive errors, try to restart
+            if (this.faceDetectionFailureCount > 50) { // 50 consecutive errors
+                console.warn('Too many processing errors, attempting camera restart...');
+                this.faceDetectionFailureCount = 0;
+                this.restartCamera();
             }
         }
     }
@@ -398,6 +452,8 @@ class HeadControl {
         this.isFaceDetected = false;
         this.lastFaceDetectionStatus = false;
         this.calibrationCompletedNotified = false; // New property
+        this.faceDetectionFailureCount = 0;
+        this.lastSuccessfulDetection = Date.now();
 
         // Reset debug counters
         this.frameCounter = 0;
@@ -769,6 +825,66 @@ class HeadControl {
         const width = Math.sqrt(dx * dx + dy * dy);
 
         return width;
+    }
+
+    // Handle camera stream interruption
+    handleStreamInterruption() {
+        console.log('Handling camera stream interruption...');
+        this.isFaceDetected = false;
+        this.faceDetectionFailureCount = this.maxFailureCount; // Force immediate warning
+
+        // Try to restart camera after a short delay
+        setTimeout(() => {
+            if (this.isActive) {
+                console.log('Attempting to restart camera...');
+                this.restartCamera();
+            }
+        }, 2000);
+    }
+
+    // Restart camera function
+    async restartCamera() {
+        try {
+            console.log('Restarting camera...');
+
+            // Stop current camera if exists
+            if (this.camera) {
+                this.camera.stop();
+            }
+
+            // Clear any existing video stream
+            const video = document.getElementById('input_video');
+            if (video && video.srcObject) {
+                const tracks = video.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                video.srcObject = null;
+            }
+
+            // Wait a moment then restart
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await this.startCamera();
+
+            console.log('Camera restarted successfully');
+        } catch (error) {
+            console.error('Failed to restart camera:', error);
+
+            // Show error message to user
+            const canvas = document.getElementById('output_canvas');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(255, 107, 107, 0.8)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                ctx.fillText('Camera Error', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.font = '12px Arial';
+                ctx.fillText('Please refresh the page', canvas.width / 2, canvas.height / 2 + 10);
+            }
+        }
     }
 
     // Calculate face height (distance from forehead to mouth)
