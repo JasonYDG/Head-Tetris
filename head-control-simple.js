@@ -76,8 +76,8 @@ class HeadControl {
         this.frameCounter = 0;
         this.distanceFrameCounter = 0;
 
-        // Baseline forehead-chin distance for head lift detection
-        this.baselineForeheadChinDistance = null;
+        // Baseline face height to width ratio for head lift detection
+        this.baselineFaceHeightWidthRatio = null;
 
         this.initMediaPipe();
     }
@@ -403,8 +403,8 @@ class HeadControl {
         this.frameCounter = 0;
         this.distanceFrameCounter = 0;
 
-        // Reset baseline distance
-        this.baselineForeheadChinDistance = null;
+        // Reset baseline face ratio
+        this.baselineFaceHeightWidthRatio = null;
     }
 
     // Simplified head movement detection
@@ -509,10 +509,10 @@ class HeadControl {
                 // Allow continuous/fast movement to bypass action cooldown
                 const isContinuousMove = this.isInContinuousMode || this.isInFastMoveMode;
                 const shouldExecute = action === 'rotate' || action !== this.lastAction || isContinuousMove;
-                
+
                 if (shouldExecute) {
                     this.executeAction(action);
-                    
+
                     // Only apply cooldown for non-continuous actions
                     if (!isContinuousMove) {
                         this.lastAction = action;
@@ -529,44 +529,43 @@ class HeadControl {
         }
     }
 
-    // Head lift detection for continuous fast drop (using eye-mouth distance trend)
+    // Head lift detection using face height to width ratio (simplified algorithm)
     checkNodAcceleration(landmarks) {
         const now = Date.now();
 
-        // Debug: confirm function is being called
-        if (!this.nodCallCounter) this.nodCallCounter = 0;
-        this.nodCallCounter++;
-        if (this.nodCallCounter % 120 === 0) { // Every 2 seconds
-            console.log(`[调试] checkNodAcceleration 已调用 ${this.nodCallCounter} 次`);
-        }
+        // Calculate face height (forehead to mouth) and width
+        const faceHeight = this.calculateFaceHeight(landmarks);
+        const faceWidth = this.calculateHeadWidth(landmarks);
 
-        // Calculate forehead to chin distance (when head lifts up, this distance gets shorter)
-        const foreheadChinDistance = this.calculateForeheadChinDistance(landmarks);
-        if (foreheadChinDistance === null) {
-            console.log('[调试] calculateForeheadChinDistance 返回 null');
+        if (faceHeight === null || faceWidth === null) {
             return false;
         }
 
-        // Set baseline distance if not set (after calibration)
-        if (!this.baselineForeheadChinDistance && this.calibrationFrames >= this.maxCalibrationFrames) {
-            this.baselineForeheadChinDistance = foreheadChinDistance;
-            console.log(`[初始化] 基准额头-下巴距离: ${this.baselineForeheadChinDistance.toFixed(4)}`);
+        // Calculate current face height to width ratio
+        const currentHeightWidthRatio = faceHeight / faceWidth;
+
+        // Set baseline ratio if not set (after calibration)
+        if (!this.baselineFaceHeightWidthRatio && this.calibrationFrames >= this.maxCalibrationFrames) {
+            this.baselineFaceHeightWidthRatio = currentHeightWidthRatio;
+            console.log(`[初始化] 基准面部高宽比: ${this.baselineFaceHeightWidthRatio.toFixed(4)}`);
             return false;
         }
 
-        if (!this.baselineForeheadChinDistance) {
+        if (!this.baselineFaceHeightWidthRatio) {
             return false;
         }
 
-        // Calculate distance ratio
-        const distanceRatio = foreheadChinDistance / this.baselineForeheadChinDistance;
+        // Calculate ratio compared to baseline (when head lifts, ratio becomes smaller)
+        const ratioComparedToBaseline = currentHeightWidthRatio / this.baselineFaceHeightWidthRatio;
 
-        // Debug logging (use frame counter instead)
+        // Debug logging
         if (!this.frameCounter) this.frameCounter = 0;
         this.frameCounter++;
 
         if (this.frameCounter % 30 === 0) {
-            console.log(`[距离] 当前额头-下巴距离: ${foreheadChinDistance.toFixed(4)}, 基准: ${this.baselineForeheadChinDistance.toFixed(4)}, 比例: ${(distanceRatio * 100).toFixed(1)}%, 阈值: 74%, 快速下降: ${this.isHeadLiftTriggered ? '开启' : '关闭'}`);
+            console.log(`[面部比例] 当前高度: ${faceHeight.toFixed(4)}, 宽度: ${faceWidth.toFixed(4)}, 高宽比: ${currentHeightWidthRatio.toFixed(4)}`);
+            console.log(`[基准比较] 基准高宽比: ${this.baselineFaceHeightWidthRatio.toFixed(4)}, 当前比例: ${(ratioComparedToBaseline * 100).toFixed(1)}%`);
+            console.log(`[状态] 快速下降: ${this.isHeadLiftTriggered ? '开启' : '关闭'}`);
         }
 
         // Track current piece ID
@@ -580,13 +579,13 @@ class HeadControl {
         const headTiltAngle = this.calculateHeadTiltAngle(landmarks);
         const isHeadSeverelyTilted = headTiltAngle !== null && Math.abs(headTiltAngle) > this.headVerticalThreshold;
 
-        // When head lifts up, forehead-chin distance becomes shorter (< 74% of baseline)
-        // But only trigger if head is not severely tilted
-        const isCurrentlyLifted = distanceRatio < 0.74 && !isHeadSeverelyTilted;
+        // Head lift detection: ratio < 75% of baseline and not severely tilted
+        const isCurrentlyLifted = ratioComparedToBaseline < 0.75 && !isHeadSeverelyTilted;
 
-        // Debug logging for head tilt (more frequent for testing)
-        if (this.frameCounter % 15 === 0 && headTiltAngle !== null) {
-            console.log(`[倾斜] 头部倾斜角度: ${headTiltAngle.toFixed(1)}°, 严重倾斜: ${isHeadSeverelyTilted ? '是' : '否'} (阈值: ${this.headVerticalThreshold}°)`);
+        // Debug logging for head tilt detection
+        if (this.frameCounter % 15 === 0) {
+            console.log(`[倾斜] 头部倾斜角度: ${headTiltAngle ? headTiltAngle.toFixed(1) : 'N/A'}°, 严重倾斜: ${isHeadSeverelyTilted ? '是' : '否'}`);
+            console.log(`[判断] 高宽比例: ${(ratioComparedToBaseline * 100).toFixed(1)}%, 抬头检测: ${isCurrentlyLifted ? '是' : '否'} (阈值: <75%)`);
         }
 
         // Detect head lift state changes
@@ -597,7 +596,7 @@ class HeadControl {
                 // Head just lifted - start timing
                 this.isHeadLifted = true;
                 this.headLiftStartTime = now;
-                console.log(`[检测] 额头-下巴距离缩短到 ${(distanceRatio * 100).toFixed(1)}% < 74%，开始计时 0.5秒`);
+                console.log(`[检测] 面部高宽比缩短到 ${(ratioComparedToBaseline * 100).toFixed(1)}% < 75%，开始计时 0.5秒`);
                 console.log(`[状态] 游戏运行: ${this.tetrisGame.gameRunning}, 当前方块ID: ${currentPieceId}`);
             } else if (!this.isHeadLiftTriggered) {
                 // Head still lifted - check if delay has passed
@@ -623,8 +622,8 @@ class HeadControl {
         } else {
             // Head lowered or tilted - reset detection state but keep fast drop active
             if (this.isHeadLifted) {
-                const reason = isHeadSeverelyTilted ? '头部严重倾斜' : '距离恢复';
-                console.log(`[停止检测] ${reason}，但快速下降继续 (距离: ${(distanceRatio * 100).toFixed(1)}%)`);
+                const reason = isHeadSeverelyTilted ? '头部严重倾斜' : '面部比例恢复';
+                console.log(`[停止检测] ${reason}，但快速下降继续 (比例: ${(ratioComparedToBaseline * 100).toFixed(1)}%)`);
             }
             this.isHeadLifted = false;
             this.headLiftStartTime = 0;
@@ -634,7 +633,7 @@ class HeadControl {
         // Continuous fast drop while head lift is triggered
         if (this.isHeadLiftTriggered) {
             const currentPieceId = this.tetrisGame.currentPiece ? this.tetrisGame.currentPiece.id : null;
-            
+
             // 检查当前方块是否是触发快速下降的方块
             if (currentPieceId !== this.fastDropPieceId) {
                 console.log(`[停止] 方块已变化，停止快速下降 - 触发方块: ${this.fastDropPieceId}, 当前方块: ${currentPieceId}`);
@@ -671,11 +670,11 @@ class HeadControl {
         // 重置快速下降状态，新方块需要重新触发
         const wasTriggered = this.isHeadLiftTriggered;
         const oldPieceId = this.fastDropPieceId;
-        
+
         this.isHeadLiftTriggered = false;
         this.fastDropPieceId = null;
         this.currentPieceId = null;
-        
+
         // 同时重置头部抬起检测状态，确保新方块需要重新触发
         this.isHeadLifted = false;
         this.headLiftStartTime = 0;
@@ -743,6 +742,55 @@ class HeadControl {
         }
 
         return distance;
+    }
+
+    // Calculate head width (distance between left and right face edges)
+    calculateHeadWidth(landmarks) {
+        if (!landmarks || landmarks.length < 400) {
+            return null;
+        }
+
+        // Use ear-to-ear distance for more stable head width measurement
+        // These points are more stable than face contour
+        const leftEar = landmarks[234];    // Left ear area
+        const rightEar = landmarks[454];   // Right ear area
+
+        // Fallback to temple points if ear points not available
+        const leftPoint = leftEar || landmarks[172];
+        const rightPoint = rightEar || landmarks[397];
+
+        if (!leftPoint || !rightPoint) {
+            return null;
+        }
+
+        // Calculate horizontal distance between left and right points
+        const dx = rightPoint.x - leftPoint.x;
+        const dy = rightPoint.y - leftPoint.y;
+        const width = Math.sqrt(dx * dx + dy * dy);
+
+        return width;
+    }
+
+    // Calculate face height (distance from forehead to mouth)
+    calculateFaceHeight(landmarks) {
+        if (!landmarks || landmarks.length < 400) {
+            return null;
+        }
+
+        // Use forehead center to mouth center for height measurement
+        const forehead = landmarks[10];      // Forehead center
+        const mouth = landmarks[13];         // Upper lip center (mouth area)
+
+        if (!forehead || !mouth) {
+            return null;
+        }
+
+        // Calculate vertical distance from forehead to mouth
+        const dx = forehead.x - mouth.x;
+        const dy = forehead.y - mouth.y;
+        const height = Math.sqrt(dx * dx + dy * dy);
+
+        return height;
     }
 
     // Calculate head tilt angle using eye landmarks
