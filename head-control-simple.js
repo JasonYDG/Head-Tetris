@@ -67,8 +67,12 @@ class HeadControl {
 
         // Face detection stability tracking
         this.faceDetectionFailureCount = 0;
-        this.maxFailureCount = 10; // Allow 10 consecutive failures before showing warning
+        this.maxFailureCount = 30; // Allow 30 consecutive failures before showing warning (约1秒)
         this.lastSuccessfulDetection = Date.now();
+
+        // 添加检测质量评估
+        this.recentDetectionHistory = []; // 记录最近的检测结果
+        this.detectionHistorySize = 10; // 保留最近10帧的检测结果
 
         // Status display control
         this.showDetailedStatus = true; // Can be set to false to show mini status
@@ -98,8 +102,8 @@ class HeadControl {
             this.faceMesh.setOptions({
                 maxNumFaces: 1,
                 refineLandmarks: false, // 关闭精细化地标检测以减少CPU使用
-                minDetectionConfidence: 0.3, // 进一步降低检测置信度阈值
-                minTrackingConfidence: 0.3, // 进一步降低跟踪置信度阈值
+                minDetectionConfidence: 0.5, // 提高检测置信度阈值以减少误报
+                minTrackingConfidence: 0.5, // 提高跟踪置信度阈值以提高稳定性
                 selfieMode: true, // 启用自拍模式
                 staticImageMode: false, // 确保视频模式
                 modelComplexity: 0 // 使用最简单的模型以减少GPU负载
@@ -146,11 +150,12 @@ class HeadControl {
             // Reset calibration state
             this.resetCalibration();
 
-            // Use default camera, simple configuration
+            // Use default camera with improved resolution for better face detection
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    width: 320,
-                    height: 240
+                    width: 640,
+                    height: 480,
+                    frameRate: { ideal: 30, max: 30 } // 确保稳定的帧率
                 }
             });
 
@@ -177,7 +182,7 @@ class HeadControl {
                 this.handleStreamInterruption();
             });
 
-            // Create MediaPipe Camera
+            // Create MediaPipe Camera with improved resolution
             this.camera = new Camera(video, {
                 onFrame: async () => {
                     try {
@@ -191,8 +196,8 @@ class HeadControl {
                         // Don't throw error, just log it to prevent breaking the camera loop
                     }
                 },
-                width: 320,
-                height: 240
+                width: 640,
+                height: 480
             });
 
             await this.camera.start();
@@ -259,6 +264,18 @@ class HeadControl {
                 this.isFaceDetected = true;
                 const landmarks = results.multiFaceLandmarks[0];
 
+                // 更新检测历史记录
+                this.recentDetectionHistory.push(true);
+                if (this.recentDetectionHistory.length > this.detectionHistorySize) {
+                    this.recentDetectionHistory.shift();
+                }
+
+                // Debug: Log successful detection every 60 frames (约2秒)
+                if (this.frameCounter % 60 === 0) {
+                    const successRate = this.recentDetectionHistory.filter(x => x).length / this.recentDetectionHistory.length;
+                    console.log(`[人脸检测] 成功检测到人脸，地标点数: ${landmarks.length}，最近成功率: ${(successRate * 100).toFixed(1)}%`);
+                }
+
                 // Draw face landmarks every frame
                 this.drawLandmarks(ctx, landmarks);
 
@@ -298,8 +315,24 @@ class HeadControl {
                 // No face detected - increment failure count
                 this.faceDetectionFailureCount++;
 
-                // Only show warning after consecutive failures (avoid flickering)
-                if (this.faceDetectionFailureCount >= this.maxFailureCount) {
+                // 更新检测历史记录
+                this.recentDetectionHistory.push(false);
+                if (this.recentDetectionHistory.length > this.detectionHistorySize) {
+                    this.recentDetectionHistory.shift();
+                }
+
+                // Debug: Log detection failures every 30 frames
+                if (this.faceDetectionFailureCount % 30 === 0) {
+                    const successRate = this.recentDetectionHistory.filter(x => x).length / this.recentDetectionHistory.length;
+                    console.log(`[人脸检测] 连续检测失败 ${this.faceDetectionFailureCount} 帧，最近成功率: ${(successRate * 100).toFixed(1)}%`);
+                }
+
+                // 使用更智能的判断逻辑：考虑最近的成功率
+                const recentSuccessRate = this.recentDetectionHistory.length > 0 ?
+                    this.recentDetectionHistory.filter(x => x).length / this.recentDetectionHistory.length : 0;
+
+                // 只有在连续失败且最近成功率很低时才认为真正丢失人脸
+                if (this.faceDetectionFailureCount >= this.maxFailureCount && recentSuccessRate < 0.2) {
                     this.isFaceDetected = false;
 
                     // Draw "Please face the camera" message
@@ -312,7 +345,7 @@ class HeadControl {
                     ctx.textBaseline = 'middle';
 
                     const timeSinceLastDetection = Date.now() - this.lastSuccessfulDetection;
-                    if (timeSinceLastDetection > 5000) { // 5 seconds
+                    if (timeSinceLastDetection > 3000) { // 3 seconds - 缩短时间判断
                         ctx.fillText('Face detection lost', canvas.width / 2, canvas.height / 2 - 10);
                         ctx.font = '12px Arial';
                         ctx.fillText('Try adjusting lighting or position', canvas.width / 2, canvas.height / 2 + 15);
@@ -454,6 +487,7 @@ class HeadControl {
         this.calibrationCompletedNotified = false; // New property
         this.faceDetectionFailureCount = 0;
         this.lastSuccessfulDetection = Date.now();
+        this.recentDetectionHistory = []; // 重置检测历史
 
         // Reset debug counters
         this.frameCounter = 0;
